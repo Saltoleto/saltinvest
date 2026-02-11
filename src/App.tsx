@@ -43,7 +43,8 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   BookOpen, 
-  Milestone
+  Milestone,
+  SlidersHorizontal
 } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -1062,73 +1063,294 @@ function DashboardView({ stats, level, total, goals, investments, isPrivate, mon
 function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
   const [editingId, setEditingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+
+  // Filtros
+  const [showFilters, setShowFilters] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+
   const [form, setForm] = useState({ title: '', target: '', due_date: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const filteredGoals = useMemo(() => {
+    const q = (searchTerm || '').toLowerCase().trim();
+    return goals.filter((g) => {
+      const matchSearch = (g.title || '').toLowerCase().includes(q);
+
+      // Filtro de Data (vencimento)
+      if (dateStart || dateEnd) {
+        if (!g.due_date) return false;
+        const gDate = new Date(g.due_date);
+        if (dateStart && gDate < new Date(dateStart)) return false;
+        if (dateEnd && gDate > new Date(dateEnd)) return false;
+      }
+
+      return matchSearch;
+    });
+  }, [goals, searchTerm, dateStart, dateEnd]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setDateStart('');
+    setDateEnd('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.title || !form.target) return setError("Preencha título e alvo");
     setLoading(true);
     setError(null);
-    const result = editingId ? await onUpdate(editingId, form) : await onAdd(form);
-    if (result.error) {
-      setError(result.error.message || "Erro ao salvar meta.");
-      setLoading(false);
-    } else {
+
+    const payload = {
+      title: form.title,
+      target: Number(form.target || 0),
+      due_date: form.due_date || null,
+    };
+
+    try {
+      if (editingId) {
+        const { error: e1 } = await onUpdate(editingId, payload);
+        if (e1) throw e1;
+      } else {
+        const { error: e2 } = await onAdd(payload);
+        if (e2) throw e2;
+      }
       setEditingId(null);
       setShowAdd(false);
-      setLoading(false);
       setForm({ title: '', target: '', due_date: '' });
+    } catch (err) {
+      setError(err?.message || 'Erro ao salvar meta.');
+    } finally {
+      setLoading(false);
     }
   };
+
+  const showFilterPanel = showFilters || !!searchTerm || !!dateStart || !!dateEnd;
 
   return (
     <div className="space-y-6 animate-in fade-in">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-black">Metas</h2>
-        <button onClick={() => { setShowAdd(!showAdd); setForm({title:'', target:'', due_date:''}); setError(null); }} className="bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/10 active:scale-95 transition-all">Nova Meta</button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-3 rounded-2xl border transition-all ${
+              showFilterPanel
+                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                : 'bg-slate-900/40 border-slate-800 text-slate-500'
+            }`}
+            title="Filtros"
+            type="button"
+          >
+            <SlidersHorizontal size={20} />
+          </button>
+          <button
+            onClick={() => setShowAdd(!showAdd)}
+            className="bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/10"
+            type="button"
+          >
+            Nova Meta
+          </button>
+        </div>
       </div>
 
-      {(showAdd || editingId) && (
-        <Card className="border-emerald-500/30 animate-in zoom-in-95 duration-300">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-500">{editingId ? 'Editar Meta' : 'Criar Nova Meta'}</h3>
-            {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-wider">{error}</div>}
-            <input type="text" placeholder="Ex: Reserva de Emergência" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none focus:border-emerald-500 text-sm" value={form.title} onChange={e => setForm({...form, title: e.target.value})} disabled={loading} />
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" placeholder="Alvo (R$)" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none focus:border-emerald-500 text-sm" value={form.target} onChange={e => setForm({...form, target: e.target.value})} disabled={loading} />
-              <input type="date" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-slate-400 outline-none text-sm" value={form.due_date === "" ? "" : form.due_date} onChange={e => setForm({...form, due_date: e.target.value})} disabled={loading} />
+      {/* Painel de Filtros */}
+      {showFilterPanel && (
+        <Card className="border-slate-800/40 bg-slate-900/20 space-y-4 animate-in slide-in-from-top-2">
+          <div className="relative group">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-500 transition-colors"
+              size={16}
+            />
+            <input
+              type="text"
+              placeholder="Pesquisar meta pelo nome..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 pl-11 outline-none focus:border-emerald-500/40 text-xs text-white"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
+                Vencimento Após
+              </p>
+              <input
+                type="date"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-300 outline-none"
+                value={dateStart}
+                onChange={(e) => setDateStart(e.target.value)}
+              />
             </div>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
+                Vencimento Antes
+              </p>
+              <input
+                type="date"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-300 outline-none"
+                value={dateEnd}
+                onChange={(e) => setDateEnd(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={clearFilters}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-400 p-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
+            type="button"
+          >
+            <Eraser size={14} /> Limpar Filtros
+          </button>
+        </Card>
+      )}
+
+      {/* Form */}
+      {(showAdd || editingId) && (
+        <Card className="border-emerald-500/30 animate-in zoom-in-95">
+          {error && (
+            <div className="p-4 mb-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold text-center">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">
+                Título
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Reserva de emergência"
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">
+                  Alvo (R$)
+                </label>
+                <input
+                  type="number"
+                  placeholder="0,00"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm"
+                  value={form.target}
+                  onChange={(e) => setForm({ ...form, target: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">
+                  Vencimento
+                </label>
+                <input
+                  type="date"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm text-slate-400"
+                  value={form.due_date}
+                  onChange={(e) => setForm({ ...form, due_date: e.target.value })}
+                />
+              </div>
+            </div>
+
             <div className="flex gap-2">
-              <button type="submit" disabled={loading} className="flex-1 bg-emerald-500 text-slate-950 font-black p-4 rounded-2xl text-xs uppercase tracking-widest flex items-center justify-center gap-2 disabled:opacity-50">{loading ? <RefreshCw className="animate-spin" size={16} /> : 'Confirmar'}</button>
-              <button type="button" onClick={() => { setEditingId(null); setShowAdd(false); setError(null); }} className="bg-slate-800 p-4 rounded-2xl hover:bg-slate-700 transition-colors" disabled={loading}><X size={20} /></button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 bg-emerald-500 text-slate-950 font-black p-4 rounded-2xl text-xs uppercase tracking-widest disabled:opacity-50"
+              >
+                {loading ? 'Salvando...' : 'Confirmar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(null);
+                  setShowAdd(false);
+                  setForm({ title: '', target: '', due_date: '' });
+                }}
+                className="bg-slate-800 p-4 rounded-2xl"
+              >
+                <X size={20} />
+              </button>
             </div>
           </form>
         </Card>
       )}
 
+      {/* Lista */}
       <div className="grid gap-4">
-        {goals.map(goal => {
-          const current = investments.reduce((sum, inv) => sum + Number(inv.distributions?.[goal.id] || 0), 0);
-          const prog = (current / goal.target) * 100;
-          return (
-            <Card key={goal.id} className="relative group border-slate-800/40">
-               <div className="flex justify-between items-start mb-4">
+        {filteredGoals.length > 0 ? (
+          filteredGoals.map((goal) => {
+            const current = investments.reduce(
+              (sum, inv) => sum + Number(inv.distributions?.[goal.id] || 0),
+              0
+            );
+            const prog = goal.target ? (current / Number(goal.target)) * 100 : 0;
+
+            return (
+              <Card key={goal.id} className="relative group border-slate-800/40">
+                <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="font-bold text-white text-base">{goal.title}</h3>
-                    <p className="text-xs text-slate-400 mt-2 font-medium">R$ {current.toLocaleString('pt-BR')} de R$ {Number(goal.target).toLocaleString('pt-BR')}</p>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-white text-base">{goal.title}</h3>
+                      {goal.due_date && (
+                        <span className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1 bg-slate-800/50 px-2 py-0.5 rounded-md">
+                          <Calendar size={10} />{' '}
+                          {new Date(goal.due_date).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 font-medium">
+                      R$ {current.toLocaleString('pt-BR')} de R${' '}
+                      {Number(goal.target || 0).toLocaleString('pt-BR')}
+                    </p>
                   </div>
+
                   <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => { setEditingId(goal.id); setForm({title: goal.title, target: goal.target, due_date: goal.due_date || ''}); setError(null); }} className="p-2.5 bg-slate-800/60 rounded-xl hover:bg-slate-700 transition-colors"><Edit2 size={14} /></button>
-                    <button onClick={() => onDelete(goal.id)} className="p-2.5 bg-slate-800/60 rounded-xl hover:bg-red-500/20 text-red-500 transition-colors"><Trash2 size={14} /></button>
+                    <button
+                      onClick={() => {
+                        setEditingId(goal.id);
+                        setShowAdd(false);
+                        setForm({
+                          title: goal.title || '',
+                          target: String(goal.target ?? ''),
+                          due_date: goal.due_date || '',
+                        });
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      className="p-2.5 bg-slate-800 rounded-xl"
+                      type="button"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(goal.id)}
+                      className="p-2.5 bg-slate-800 rounded-xl hover:text-red-500"
+                      type="button"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
-               </div>
-               <ProgressBar progress={prog} color={prog >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
-            </Card>
-          );
-        })}
-        {goals.length === 0 && !showAdd && <div className="text-center p-12 bg-slate-900/20 border border-dashed border-slate-800 rounded-[2.5rem]"><Target className="mx-auto text-slate-700 mb-4" size={48} /><p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">Crie a sua primeira meta para começar</p></div>}
+                </div>
+
+                <ProgressBar
+                  progress={prog}
+                  color={prog >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}
+                />
+              </Card>
+            );
+          })
+        ) : (
+          <div className="text-center p-12 bg-slate-900/10 border border-dashed border-slate-800 rounded-[2rem] text-slate-600 text-xs font-bold uppercase tracking-widest">
+            {showFilterPanel ? 'Nenhuma meta encontrada no período' : 'Crie sua primeira meta.'}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1140,6 +1362,9 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterCategory, setFilterCategory] = useState('Todas');
+  const [filterInstitution, setFilterInstitution] = useState('Todas');
   const [showFgcDetail, setShowFgcDetail] = useState(false);
   
   const FGC_LIMIT = 250000;
@@ -1184,11 +1409,25 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
   }, [fgcByInstitution, investments]);
 
   const filteredInvestments = useMemo(() => {
-    return investments.filter(inv => 
-      inv.asset.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      inv.institution.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [investments, searchTerm]);
+    const q = (searchTerm || '').toLowerCase().trim();
+    return investments.filter((inv) => {
+      const asset = (inv.asset || '').toLowerCase();
+      const inst = (inv.institution || '').toLowerCase();
+
+      const matchSearch = !q || asset.includes(q) || inst.includes(q);
+      const matchCategory = filterCategory === 'Todas' || (inv.category || '') === filterCategory;
+      const matchInstitution = filterInstitution === 'Todas' || (inv.institution || '') === filterInstitution;
+
+      return matchSearch && matchCategory && matchInstitution;
+    });
+  }, [investments, searchTerm, filterCategory, filterInstitution]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setFilterCategory('Todas');
+    setFilterInstitution('Todas');
+  };
+
 
   const handleConfirm = async () => {
     if (!form.asset || !form.amount) return;
@@ -1231,6 +1470,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
   };
 
   const formatVal = (v) => isPrivate ? "••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const showFilterPanel = showFilters || !!searchTerm || filterCategory !== 'Todas' || filterInstitution !== 'Todas';
 
   return (
     <div className="space-y-8 animate-in zoom-in-95 duration-500">
@@ -1403,27 +1643,102 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
       </section>
 
       <section>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 px-1">
+                <div className="flex items-center justify-between gap-4 mb-6 px-1">
           <div className="flex items-center gap-3">
-             <div className="p-2.5 bg-emerald-500/10 rounded-2xl text-emerald-500">
-                <History size={20} />
-             </div>
-             <h2 className="text-2xl font-black">Histórico</h2>
+            <div className="w-10 h-10 bg-slate-800/50 rounded-2xl flex items-center justify-center text-emerald-500 shadow-inner">
+              <History size={20} />
+            </div>
+            <h2 className="text-2xl font-black">Histórico</h2>
           </div>
-          
-          <div className="relative group max-w-sm w-full">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-500 transition-colors" size={16} />
-            <input 
-              type="text" 
-              placeholder="Pesquisar ativos ou bancos..." 
-              className="w-full bg-slate-900/40 border border-slate-800 rounded-2xl p-3.5 pl-11 outline-none focus:border-emerald-500/40 text-xs text-white"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
+
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-3 rounded-2xl border transition-all ${
+              showFilterPanel
+                ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                : 'bg-slate-900/40 border-slate-800 text-slate-500'
+            }`}
+            title="Filtros"
+            type="button"
+          >
+            <SlidersHorizontal size={20} />
+          </button>
         </div>
 
+        {showFilterPanel && (
+          <Card className="border-slate-800/40 bg-slate-900/20 space-y-4 animate-in slide-in-from-top-2 mb-6">
+            <div className="relative group">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-500 transition-colors"
+                size={16}
+              />
+              <input
+                type="text"
+                placeholder="Pesquisar por ativo ou banco..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 pl-11 outline-none focus:border-emerald-500/40 text-xs text-white"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
+                Categorias
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {['Todas', ...assetClasses.map((c) => c.name)].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setFilterCategory(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all uppercase ${
+                      filterCategory === cat
+                        ? 'bg-emerald-500 border-emerald-500 text-slate-950'
+                        : 'bg-slate-950 border-slate-800 text-slate-500'
+                    }`}
+                    type="button"
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
+                  Instituição
+                </p>
+                <select
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-300 outline-none uppercase font-bold"
+                  value={filterInstitution}
+                  onChange={(e) => setFilterInstitution(e.target.value)}
+                >
+                  <option value="Todas">TODAS</option>
+                  {institutions.map((inst) => (
+                    <option key={inst.id} value={inst.name}>
+                      {inst.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={clearFilters}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-400 p-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 h-[46px]"
+                type="button"
+              >
+                <Eraser size={14} /> Limpar
+              </button>
+            </div>
+          </Card>
+        )}
+
         <div className="space-y-3">
+          <div className="flex justify-between items-center px-1">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+              Listando {filteredInvestments.length} aportes
+            </p>
+          </div>
           {filteredInvestments.length > 0 ? filteredInvestments.map(inv => (
             <div key={inv.id} className={`bg-slate-900/30 border p-5 rounded-[2rem] hover:border-emerald-500/20 transition-all group shadow-sm overflow-hidden relative ${editingId === inv.id ? 'border-amber-500/50 bg-amber-500/5' : 'border-slate-800/40'}`}>
               
