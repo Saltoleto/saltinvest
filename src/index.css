@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ajustes globais para evitar margens/estilos indesejados em inputs/botões */
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #020617; /* slate-950 */
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
