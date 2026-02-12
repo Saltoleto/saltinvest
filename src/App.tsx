@@ -37,6 +37,8 @@ import {
   Lock, 
   ArrowRight, 
   ChevronLeft, 
+  ChevronDown,
+  ChevronUp,
   History, 
   ShieldAlert, 
   Shield, 
@@ -148,6 +150,25 @@ function formatBRLInputValue(value: string | number | null | undefined): string 
   const s = typeof value === 'number' ? String(value) : String(value);
   if (!s.trim()) return '';
   return brlFormatter.format(parseBRL(s));
+}
+
+// Sugestão mensal (mesma regra usada no Plano do Mês e no pré-preenchimento ao vincular metas)
+function calcSuggestedMonthly(remaining: number, dueDate?: string | null): number | null {
+  if (!Number.isFinite(remaining) || remaining <= 0) return 0;
+  if (!dueDate) return null;
+  const now = new Date();
+  const due = new Date(dueDate);
+  // Se já venceu, sugerimos aportar tudo (ou zero se já atingiu)
+  if (Number.isNaN(due.getTime())) return null;
+  if (due < new Date(new Date().toDateString())) return remaining;
+
+  // Meses até o vencimento (inclusivo do mês atual), com ajuste por dia do mês
+  const months =
+    (due.getFullYear() - now.getFullYear()) * 12 +
+    (due.getMonth() - now.getMonth()) +
+    (due.getDate() >= now.getDate() ? 1 : 0);
+  const m = Math.max(1, months);
+  return remaining / m;
 }
 
 type ProgressBarProps = { progress: number; color?: string; size?: string };
@@ -443,6 +464,8 @@ export default function App() {
   
   const [goals, setGoals] = useState([]);
   const [investments, setInvestments] = useState([]);
+  // Progresso consolidado das metas (preferencialmente via view v_goal_progress)
+  const [goalProgress, setGoalProgress] = useState<any[]>([]);
   const [institutions, setInstitutions] = useState([]);
   const [assetClasses, setAssetClasses] = useState([]);
   const [allocation, setAllocation] = useState<Record<string, number>>({});
@@ -631,6 +654,42 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, [supabaseReady]);
 
+  const computeGoalProgressFallback = (gList: any[], invList: any[]) => {
+    const invByGoal: Record<string, number> = {};
+    for (const inv of invList || []) {
+      const dist = inv?.distributions || {};
+      for (const [goalId, val] of Object.entries(dist)) {
+        invByGoal[goalId] = (invByGoal[goalId] || 0) + Number(val || 0);
+      }
+    }
+
+    const today = new Date();
+    const result = (gList || []).map((g) => {
+      const invested_amount = invByGoal[String(g.id)] || 0;
+      const target = Number(g.target || 0);
+      const progress_percent = target > 0 ? (invested_amount / target) * 100 : 0;
+      const remaining_amount = Math.max(0, target - invested_amount);
+      const due = g.due_date ? new Date(g.due_date) : null;
+      const status = target > 0 && invested_amount >= target
+        ? 'Concluída'
+        : (due && due < new Date(today.toDateString()) ? 'Atrasada' : 'Ativa');
+      return {
+        user_id: g.user_id,
+        goal_id: g.id,
+        title: g.title,
+        target,
+        due_date: g.due_date,
+        created_at: g.created_at,
+        invested_amount,
+        remaining_amount,
+        progress_percent,
+        status,
+      };
+    });
+
+    return result;
+  };
+
 
   // Revalida a sessão ao voltar para o app ou trocar o foco (evita operar sem JWT)
   useEffect(() => {
@@ -723,6 +782,20 @@ export default function App() {
           setAiInsights(insightsData);
         } else {
           setAiInsights([{ type: 'Info', text: 'Clique em gerar insights para uma análise personalizada.' }]);
+        }
+
+        // Progresso de metas (via view) - com fallback local para ambientes sem a view.
+        try {
+          const { data: pg, error: pgErr } = await supabaseClient
+            .from('v_goal_progress')
+            .select('*')
+            .eq('user_id', uid)
+            .order('due_date', { ascending: true, nullsFirst: false });
+
+          if (pgErr) throw pgErr;
+          setGoalProgress(pg || []);
+        } catch {
+          setGoalProgress(computeGoalProgressFallback(gData || [], iData || []));
         }
     } catch (err) {
         console.error("Data fetch error:", err);
@@ -1093,6 +1166,7 @@ export default function App() {
           <DashboardView 
             stats={userStats} level={levelData} total={totalPatrimony} 
             goals={goals} investments={investments} 
+            goalProgress={goalProgress}
             isPrivate={isPrivate} monthStats={monthlyStats}
             aiInsights={aiInsights}
             isAiLoading={isAiLoading}
@@ -1102,7 +1176,7 @@ export default function App() {
         )}
         {activeTab === 'goals' && (
           <GoalsView 
-            goals={goals} investments={investments}
+            goals={goals} investments={investments} goalProgress={goalProgress}
             onAdd={handleAddGoal} 
             onUpdate={handleUpdateGoal} 
             onDelete={handleDeleteGoal}
@@ -1114,7 +1188,10 @@ export default function App() {
             onAdd={handleAddInvestment} 
             onUpdate={handleUpdateInvestment}
             onDelete={handleDeleteInvestment} 
-            goals={goals} institutions={institutions} assetClasses={assetClasses}
+            goals={goals}
+            goalProgress={goalProgress}
+            institutions={institutions}
+            assetClasses={assetClasses}
             isPrivate={isPrivate}
           />
         )}
@@ -1297,8 +1374,94 @@ function PwaNudges({
   );
 }
 
-function DashboardView({ stats, level, total, goals, investments, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError }) {
+function DashboardView({ stats, level, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError }) {
   const formatVal = (v) => isPrivate ? "••••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+  // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
+  const [monthPlanOpen, setMonthPlanOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+
+  const goalsData = useMemo(() => {
+    const list = Array.isArray(goalProgress) && goalProgress.length ? goalProgress : [];
+    // Normaliza campos (para o caso do fallback local)
+    return list
+      .map((g) => ({
+        ...g,
+        target: Number(g.target || 0),
+        invested_amount: Number((g as any).invested_amount ?? (g as any).invested_total ?? 0),
+        progress_percent: Number((g as any).progress_percent ?? 0),
+        remaining_amount: Number((g as any).remaining_amount ?? Math.max(0, Number(g.target || 0) - Number((g as any).invested_amount ?? 0))),
+      }))
+      .sort((a, b) => {
+        const ta = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        if (ta !== tb) return ta - tb;
+        return (b.progress_percent || 0) - (a.progress_percent || 0);
+      });
+  }, [goalProgress]);
+
+  const activeGoals = useMemo(() => goalsData.filter((g) => (g.status || '').toLowerCase() !== 'concluída' && (g.status || '').toLowerCase() !== 'concluida'), [goalsData]);
+  const completedGoals = useMemo(() => goalsData.filter((g) => (g.status || '').toLowerCase().startsWith('conclu')), [goalsData]);
+
+  const suggestedMonthly = (remaining: number, dueDate?: string | null) => calcSuggestedMonthly(remaining, dueDate);
+
+  // Plano do mês (UX): sugere até 3 metas mais urgentes e o valor mensal estimado para cumprir no prazo.
+  // Regras:
+  // - Ordena metas ativas pela data de vencimento (mais próxima primeiro; sem vencimento vai por último)
+  // - Para metas sem vencimento, sugere dividir o restante em 12 meses
+  // - Exibe apenas se existir pelo menos 1 meta ativa
+  const monthPlan = useMemo(() => {
+    const list = activeGoals
+      .filter((g) => (Number(g.remaining_amount) || 0) > 0)
+      .map((g) => {
+        const remaining = Number(g.remaining_amount) || 0;
+        const sm = suggestedMonthly(remaining, g.due_date);
+        const monthly = sm != null ? sm : remaining / 12;
+        const horizonLabel = sm != null ? 'prazo' : '12m';
+        return {
+          id: g.id,
+          title: g.title,
+          due_date: g.due_date,
+          remaining,
+          monthly,
+          horizonLabel,
+        };
+      })
+      .sort((a, b) => {
+        const ta = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        if (ta !== tb) return ta - tb;
+        return b.remaining - a.remaining;
+      });
+
+    const items = list.slice(0, 3);
+    const totalSuggested = items.reduce((acc, it) => acc + (Number(it.monthly) || 0), 0);
+    // UI usa monthPlan.total (evita NaN e deixa claro o significado)
+    return { items, total: totalSuggested };
+  }, [activeGoals]);
+  // Cores determinísticas por meta (consistência visual entre cards/planos)
+  const goalColor = (goalId: string) => {
+    const palette = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#22c55e', '#06b6d4'];
+    let h = 0;
+    for (let i = 0; i < goalId.length; i++) h = (h * 31 + goalId.charCodeAt(i)) >>> 0;
+    return palette[h % palette.length];
+  };
+
+  const monthPlanColored = useMemo(() => {
+    const items = monthPlan.items.map((it) => ({ ...it, color: goalColor(String(it.id)) }));
+    const total = monthPlan.total || 0;
+    const segments = total > 0
+      ? items.map((it) => ({
+          id: it.id,
+          title: it.title,
+          color: it.color,
+          // evita NaN
+          pct: Math.max(0, (Number(it.monthly) || 0) / total) * 100,
+        }))
+      : [];
+    return { ...monthPlan, items, segments };
+  }, [monthPlan]);
+
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -1379,48 +1542,200 @@ function DashboardView({ stats, level, total, goals, investments, isPrivate, mon
         </div>
       </section>
 
-      <section>
-        <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] mb-4 flex justify-between items-center ml-1">
-          <span>Próximas Metas</span>
-          <Target size={14} className="text-slate-600" />
-        </h3>
-        <div className="space-y-3">
-	          {goals.length > 0 ? goals
-	            .slice()
-	            .sort((a, b) => {
-	              const ta = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-	              const tb = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
-	              return ta - tb;
-	            })
-	            .slice(0, 3)
-	            .map(goal => {
-            const current = investments.reduce((sum, inv) => sum + Number(inv.distributions?.[goal.id] || 0), 0);
-            const prog = Math.min(100, (current / goal.target) * 100);
-            return (
-              <div key={goal.id} className="bg-slate-900/40 p-5 rounded-3xl border border-slate-800/40 group hover:border-emerald-500/20 transition-all shadow-md">
-                <div className="flex justify-between mb-3 items-center">
-                  <span className="text-sm font-bold text-slate-200">{goal.title}</span>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[11px] font-black ${prog >= 100 ? 'text-emerald-400' : 'text-blue-400'}`}>
-                      {Math.round(prog)}%
+      <section className="space-y-4">
+        <div className="flex items-center justify-between ml-1">
+          <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
+            <Target size={14} className="text-blue-500" /> Metas em foco
+          </h3>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
+            {activeGoals.length} ativas · {completedGoals.length} concluídas
+          </span>
+        </div>
+
+        {/* Card de Ação (a meta que mais precisa de atenção) */}
+        {activeGoals.length > 0 ? (() => {
+          const g = activeGoals[0];
+          const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
+          const remaining = Math.max(0, g.remaining_amount || 0);
+          const monthly = suggestedMonthly(remaining, g.due_date);
+          return (
+            <Card className="border-blue-500/20 bg-gradient-to-br from-slate-900/50 to-blue-500/5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">Próxima ação</p>
+                  <h4 className="text-base font-black text-white truncate mt-1">{g.title}</h4>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
+                      <Calendar size={12} className="inline mr-1" /> {g.due_date ? new Date(g.due_date).toLocaleDateString('pt-BR') : 'Sem prazo'}
                     </span>
-                    <div className="w-1 h-1 bg-slate-700 rounded-full"></div>
-                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-bold uppercase">
-                      <Calendar size={12} /> {goal.due_date ? new Date(goal.due_date).toLocaleDateString() : 'Sem prazo'}
-                    </div>
+                    <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
+                      Falta {formatVal(remaining)}
+                    </span>
+                    {monthly !== null && remaining > 0 && (
+                      <span className="text-[10px] font-black text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-xl">
+                        Sugestão: {formatVal(monthly)}/mês
+                      </span>
+                    )}
                   </div>
                 </div>
-                <ProgressBar progress={prog} color={prog >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
+                <div className="shrink-0 bg-blue-500/10 text-blue-400 p-3 rounded-2xl border border-blue-500/20">
+                  <Milestone size={20} />
+                </div>
               </div>
-            );
-	          }) : <div className="text-center p-10 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sem metas ativas.</div>}
-        </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Progresso</span>
+                <span className="text-[11px] font-black text-blue-400">{Math.round(prog)}%</span>
+              </div>
+              <ProgressBar progress={prog} color={prog >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
+            </Card>
+          );
+        })() : (
+          <div className="text-center p-10 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+            Cadastre uma meta para começar o planejamento.
+          </div>
+        )}
+
+        {/* Plano do mês (recomendação de aportes por meta) */}
+        {monthPlanColored.items.length > 0 && (
+          <Card className="border-emerald-500/10 bg-emerald-500/5">
+            <button
+              type="button"
+              onClick={() => setMonthPlanOpen(v => !v)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2">
+                <h4 className="font-black text-[10px] uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+                  <Target size={14} /> Plano do Mês
+                </h4>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">(colapsável)</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+	                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total sugerido</p>
+	                  <p className="text-sm font-black text-white">{formatVal(monthPlanColored.total)}</p>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/60 text-slate-400">
+                  {monthPlanOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </div>
+              </div>
+            </button>
+
+            {monthPlanOpen && (
+              <div className="mt-5 animate-in fade-in slide-in-from-top-2">
+                {/* Barra empilhada proporcional ao total sugerido */}
+                <div className="space-y-3 mb-6">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Distribuição do mês</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">100%</p>
+                  </div>
+	                  <div className="w-full h-3 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40 flex">
+	                    {monthPlanColored.segments.map((seg) => (
+	                      <div
+	                        key={String(seg.id)}
+	                        className="h-full"
+	                        style={{ width: `${seg.pct}%`, backgroundColor: seg.color }}
+	                        title={`${seg.title}: ${seg.pct.toFixed(0)}%`}
+	                      />
+	                    ))}
+	                  </div>
+                </div>
+
+                <div className="space-y-3">
+	                  {monthPlanColored.items.map((it) => {
+	                    const seg = monthPlanColored.segments.find(s => String(s.id) === String(it.id));
+	                    const pct = seg?.pct ?? 0;
+	                    const suggested = Number(it.monthly || 0);
+                    return (
+	                      <div key={String(it.id)} className="bg-slate-950/40 border border-slate-800/60 rounded-3xl p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-black text-white">{it.title}</p>
+                            <p className="text-[10px] text-slate-400 mt-1">
+                              Sugestão do mês:{' '}
+	                              <span className="font-black text-emerald-400">{formatVal(suggested)}</span>
+                              {it.due_date ? (
+                                <span className="text-slate-600"> • vence em {new Date(it.due_date).toLocaleDateString('pt-BR')}</span>
+                              ) : (
+                                <span className="text-slate-600"> • sem vencimento</span>
+                              )}
+                            </p>
+                          </div>
+	                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{pct.toFixed(0)}%</span>
+                        </div>
+                        <div className="mt-3 w-full bg-slate-800/50 rounded-full h-2 overflow-hidden border border-slate-700/30">
+                          <div className="h-full w-full" style={{ backgroundColor: it.color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Dica: use o total como referência do seu aporte mensal e distribua conforme as metas mais próximas do prazo.
+                  </p>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Timeline (próximas metas por prazo) */}
+        {activeGoals.length > 0 && (
+          <Card className="border-slate-800/40 bg-slate-900/20">
+            <button
+              type="button"
+              onClick={() => setTimelineOpen(v => !v)}
+              className="w-full flex items-center justify-between gap-4"
+            >
+              <div className="flex items-center gap-2">
+                <History size={14} className="text-slate-500" />
+                <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-500">Timeline</h4>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">próximos 6</span>
+                {timelineOpen ? <ChevronUp size={16} className="text-slate-500" /> : <ChevronDown size={16} className="text-slate-500" />}
+              </div>
+            </button>
+
+            {timelineOpen && (
+              <div className="space-y-4 mt-5 animate-in slide-in-from-top-1">
+              {activeGoals.slice(0, 6).map((g, idx) => {
+                const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
+                const remaining = Math.max(0, g.remaining_amount || 0);
+                const dueLabel = g.due_date ? new Date(g.due_date).toLocaleDateString('pt-BR') : 'Sem prazo';
+                const isOverdue = g.due_date ? new Date(g.due_date) < new Date(new Date().toDateString()) && prog < 100 : false;
+                return (
+                  <div key={g.goal_id || g.id || idx} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-3 h-3 rounded-full border ${isOverdue ? 'bg-red-500/20 border-red-500/40' : 'bg-emerald-500/20 border-emerald-500/30'}`} />
+                      {idx < Math.min(5, activeGoals.length - 1) && <div className="w-px flex-1 bg-slate-800/70 my-1" />}
+                    </div>
+                    <div className="flex-1 min-w-0 bg-slate-950/30 border border-slate-800/60 rounded-2xl p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">{dueLabel}</p>
+                          <p className="text-sm font-black text-white truncate mt-1">{g.title}</p>
+                        </div>
+                        <span className={`text-[11px] font-black ${isOverdue ? 'text-red-400' : prog >= 100 ? 'text-emerald-400' : 'text-blue-400'}`}>{Math.round(prog)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between mt-3 mb-2">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase">Falta</span>
+                        <span className="text-[10px] font-black text-slate-300">{formatVal(remaining)}</span>
+                      </div>
+                      <ProgressBar progress={prog} color={isOverdue ? "bg-red-500" : prog >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
+                    </div>
+                  </div>
+                );
+              })}
+              </div>
+            )}
+          </Card>
+        )}
       </section>
     </div>
   );
 }
 
-function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
+function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete }) {
   const [editingId, setEditingId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
 
@@ -1757,7 +2072,7 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
   );
 }
 
-function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClasses, investments, isPrivate }) {
+function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutions, assetClasses, investments, isPrivate }) {
   const [form, setForm] = useState({ asset: '', amount: '', category: '', institution: '', liquidity: '', asset_due_date: '', fgc_covered: false, distributions: {} });
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1773,6 +2088,28 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
   
   const FGC_LIMIT = 250000;
   const liquidityOptions = ['Diária', 'D+1', 'D+2', 'D+3', 'D+30', 'D+60', 'D+90', 'No Vencimento'];
+
+  // Sugestão mensal por meta (usada para pré-preencher ao vincular meta no novo investimento)
+  const suggestedByGoalId = useMemo(() => {
+    const map: Record<string, number> = {};
+    (goalProgress || []).forEach((gp: any) => {
+      const goalId = String(gp.goal_id ?? gp.id ?? '');
+      if (!goalId) return;
+      const remaining = Number(gp.remaining_amount ?? 0);
+      if (!Number.isFinite(remaining) || remaining <= 0) {
+        map[goalId] = 0;
+        return;
+      }
+
+      // Usa a MESMA regra do "Plano do Mês" para evitar divergência de valores.
+      // - Se tiver vencimento: divide pelo número de meses até o vencimento (com ajuste pelo dia do mês)
+      // - Se não tiver vencimento: divide em 12 meses
+      const withDue = calcSuggestedMonthly(remaining, gp.due_date);
+      const monthly = withDue === null ? remaining / 12 : withDue;
+      map[goalId] = Math.max(0, monthly);
+    });
+    return map;
+  }, [goalProgress]);
 
   const fgcByInstitution = useMemo(() => {
     const instMap = {};
@@ -2065,7 +2402,24 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
                 {goals.map(goal => (
                   <div key={goal.id} className={`p-4 rounded-2xl border ${form.distributions[goal.id] !== undefined ? 'bg-emerald-500/5 border-emerald-500/40' : 'bg-slate-950/40 border-slate-800'}`}>
                     <div className="flex justify-between items-center">
-                      <button type="button" disabled={loading} onClick={() => { const d = {...form.distributions}; d[goal.id] !== undefined ? delete d[goal.id] : d[goal.id] = ''; setForm({...form, distributions: d}); }} className="text-xs font-bold flex items-center gap-3 text-left">
+                      <button
+                        type="button"
+                        disabled={loading}
+                        onClick={() => {
+                          const d: Record<string, any> = { ...form.distributions };
+                          if (d[goal.id] !== undefined) {
+                            delete d[goal.id];
+                          } else {
+                            const suggested = suggestedByGoalId?.[goal.id];
+                            // Pré-preenche com a sugestão mensal (se existir) ao vincular a meta
+                            d[goal.id] = suggested && Number.isFinite(suggested) && suggested > 0
+                              ? formatBRLInputValue(suggested)
+                              : '';
+                          }
+                          setForm({ ...form, distributions: d });
+                        }}
+                        className="text-xs font-bold flex items-center gap-3 text-left"
+                      >
                         <div className={`w-4 h-4 rounded-lg border flex-shrink-0 ${form.distributions[goal.id] !== undefined ? 'bg-emerald-500 border-emerald-500' : 'border-slate-700'}`} />
                         {goal.title}
                       </button>

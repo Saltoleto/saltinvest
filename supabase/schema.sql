@@ -117,3 +117,90 @@ CREATE POLICY "Users can manage their own insights" ON public.ai_insights
 FOR ALL
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
+
+-- =============================================================
+-- Option A) View + Índices (Dashboard/Planejamento de Metas)
+--
+-- A view abaixo calcula, por usuário e por meta:
+-- - valor investido na meta (somando o JSONB investments.distributions)
+-- - % de progresso, valor restante, e status (Ativa/Atrasada/Concluída)
+--
+-- Observação: investments.distributions é JSONB com chaves = goal_id (texto)
+-- e valores numéricos (armazenados como number).
+-- =============================================================
+
+-- View: progresso de metas
+DROP VIEW IF EXISTS public.v_goal_progress;
+-- IMPORTANTE: `security_invoker=true` faz a view respeitar permissões/RLS do usuário que consulta,
+-- evitando o alerta de SECURITY DEFINER no Supabase.
+CREATE VIEW public.v_goal_progress WITH (security_invoker = true) AS
+WITH dist AS (
+  SELECT
+    i.user_id,
+    (e.key)::uuid AS goal_id,
+    COALESCE((e.value)::numeric, 0) AS amount
+  FROM public.investments i
+  CROSS JOIN LATERAL jsonb_each(COALESCE(i.distributions, '{}'::jsonb)) AS e(key, value)
+)
+SELECT
+  g.user_id,
+  g.id AS goal_id,
+  g.title,
+  g.target,
+  g.due_date,
+  g.created_at,
+  COALESCE(SUM(d.amount), 0) AS invested_amount,
+  GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) AS remaining_amount,
+  CASE
+    WHEN g.due_date IS NULL OR GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) = 0 THEN NULL
+    ELSE GREATEST(
+      1,
+      (
+        (EXTRACT(YEAR FROM AGE(g.due_date, CURRENT_DATE)) * 12)
+        + EXTRACT(MONTH FROM AGE(g.due_date, CURRENT_DATE))
+        + 1
+      )::int
+    )
+  END AS months_left,
+  CASE
+    WHEN g.due_date IS NULL THEN NULL
+    WHEN GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) = 0 THEN 0
+    ELSE ROUND(
+      GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0)
+      / GREATEST(
+          1,
+          (
+            (EXTRACT(YEAR FROM AGE(g.due_date, CURRENT_DATE)) * 12)
+            + EXTRACT(MONTH FROM AGE(g.due_date, CURRENT_DATE))
+            + 1
+          )::int
+        ),
+      2
+    )
+  END AS required_per_month,
+  CASE
+    WHEN g.target > 0 THEN ROUND((COALESCE(SUM(d.amount), 0) / g.target) * 100, 2)
+    ELSE 0
+  END AS progress_percent,
+  CASE
+    WHEN g.target > 0 AND COALESCE(SUM(d.amount), 0) >= g.target THEN 'Concluída'
+    WHEN g.due_date IS NOT NULL AND g.due_date < CURRENT_DATE AND COALESCE(SUM(d.amount), 0) < g.target THEN 'Atrasada'
+    ELSE 'Ativa'
+  END AS status
+FROM public.goals g
+LEFT JOIN dist d
+  ON d.user_id = g.user_id AND d.goal_id = g.id
+GROUP BY g.user_id, g.id, g.title, g.target, g.due_date, g.created_at;
+
+-- Índices recomendados
+CREATE INDEX IF NOT EXISTS idx_goals_user_due_date ON public.goals (user_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_goals_user_created_at ON public.goals (user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_investments_user_created_at ON public.investments (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_investments_user_date ON public.investments (user_id, date DESC);
+
+-- Para acelerar consultas envolvendo distributions (jsonb)
+CREATE INDEX IF NOT EXISTS idx_investments_distributions_gin ON public.investments USING GIN (distributions jsonb_path_ops);
+
+CREATE INDEX IF NOT EXISTS idx_ai_insights_user_created_at ON public.ai_insights (user_id, created_at DESC);
+
