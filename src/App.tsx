@@ -55,10 +55,100 @@ const supabaseClient = supabase;
 // --- Componentes de Utilidade ---
 type CardProps = React.PropsWithChildren<{ className?: string }>;
 const Card: React.FC<CardProps> = ({ children, className = "" }) => (
-  <div className={`bg-slate-900/40 border border-slate-800/60 rounded-3xl p-6 backdrop-blur-xl ${className}`}>
+  <div className={`card-nocopy bg-slate-900/40 border border-slate-800/60 rounded-3xl p-6 backdrop-blur-xl ${className}`}>
     {children}
   </div>
 );
+
+// --- Máscara / parsing de moeda (pt-BR) ---
+const brlFormatter = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function parseBRL(value: unknown): number {
+  if (value == null) return 0;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const s = String(value).trim();
+  if (!s) return 0;
+
+  // Suporta entrada pt-BR (1.234,56) e também entrada com ponto decimal (1500.43)
+  // Heurística:
+  // - Se houver "," e ".", o ÚLTIMO separador é o decimal.
+  // - Se houver só um tipo de separador, ele é decimal apenas se houver 1-2 dígitos depois dele
+  //   (ou se estiver no final, durante digitação). Caso contrário, tratamos como separador de milhar.
+  let cleaned = s
+    .replace(/\s/g, '')
+    .replace(/R\$/gi, '')
+    .replace(/[^0-9,\.\-]/g, '');
+
+  if (!cleaned) return 0;
+
+  const isNegative = cleaned.includes('-');
+  cleaned = cleaned.replace(/-/g, '');
+
+  // ✅ Regra "digits-as-cents" (máscara monetária clássica):
+  // Se vier apenas números (ex: "150043"), interpretamos como centavos => 1500.43.
+  // Isso garante que digitar "150043" resulte em "1.500,43" no padrão pt-BR.
+  if (/^\d+$/.test(cleaned)) {
+    const n = Number(cleaned) / 100;
+    if (!Number.isFinite(n)) return 0;
+    return isNegative ? -n : n;
+  }
+
+  const lastComma = cleaned.lastIndexOf(',');
+  const lastDot = cleaned.lastIndexOf('.');
+  const hasComma = lastComma !== -1;
+  const hasDot = lastDot !== -1;
+
+  const countAfter = (idx: number) => Math.max(0, cleaned.length - idx - 1);
+
+  let decIdx = -1;
+  if (hasComma && hasDot) {
+    decIdx = Math.max(lastComma, lastDot);
+  } else if (hasComma) {
+    const after = countAfter(lastComma);
+    if (after === 0 || after <= 2) decIdx = lastComma;
+  } else if (hasDot) {
+    const after = countAfter(lastDot);
+    if (after === 0 || after <= 2) decIdx = lastDot;
+  }
+
+  let intPart = cleaned;
+  let decPart = '';
+  if (decIdx >= 0) {
+    intPart = cleaned.slice(0, decIdx);
+    decPart = cleaned.slice(decIdx + 1);
+  }
+
+  intPart = intPart.replace(/[\.,]/g, '');
+  decPart = decPart.replace(/[\.,]/g, '').slice(0, 2);
+
+  const numStr = `${intPart || '0'}${decIdx >= 0 ? `.${decPart.padEnd(2, '0')}` : ''}`;
+  const n = Number(numStr);
+  if (!Number.isFinite(n)) return 0;
+  return isNegative ? -n : n;
+}
+
+function maskBRL(input: string): string {
+  // Máscara pt-BR "digits-as-cents":
+  // - Digitar "150043" => "R$ 1.500,43"
+  // - Funciona também com colar "1.500,43" ou "1500.43" (pegamos só os dígitos)
+  const digits = String(input ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  const n = Number(digits) / 100;
+  if (!Number.isFinite(n)) return '';
+  return brlFormatter.format(n);
+}
+
+function formatBRLInputValue(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const s = typeof value === 'number' ? String(value) : String(value);
+  if (!s.trim()) return '';
+  return brlFormatter.format(parseBRL(s));
+}
 
 type ProgressBarProps = { progress: number; color?: string; size?: string };
 const ProgressBar: React.FC<ProgressBarProps> = ({ progress, color = "bg-emerald-500", size = "h-2" }) => (
@@ -201,7 +291,7 @@ function AuthView() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-slate-950 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent">
+    <div className="min-h-screen app-nocopy flex items-center justify-center p-6 bg-slate-950 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-emerald-500/10 via-transparent to-transparent">
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-1000">
         <div className="text-center mb-10">
           <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-3xl flex items-center justify-center shadow-2xl shadow-emerald-500/20 mx-auto mb-6 rotate-3">
@@ -314,7 +404,7 @@ function AuthView() {
   // --- Tela de configuração do Supabase (quando .env não está configurado) ---
   function SupabaseConfigView() {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+      <div className="min-h-screen app-nocopy bg-slate-950 text-slate-100 flex items-center justify-center p-6">
         <div className="w-full max-w-lg">
           <div className="bg-slate-900/40 border border-slate-800/60 rounded-3xl p-6 backdrop-blur-xl">
             <div className="flex items-center gap-3 mb-4">
@@ -975,7 +1065,7 @@ export default function App() {
   const isSafariIOS = isIOS && /^((?!crios|fxios|opios|edgios|chrome|android).)*safari/i.test(navigator.userAgent);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30">
+    <div className="min-h-screen app-nocopy bg-slate-950 text-slate-100 font-sans selection:bg-emerald-500/30">
       <header className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/40 p-4">
         <div className="max-w-4xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -1378,7 +1468,7 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
 
     const payload = {
       title: form.title,
-      target: Number(form.target || 0),
+      target: parseBRL(form.target),
       due_date: form.due_date || null,
     };
 
@@ -1545,11 +1635,14 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
                   Alvo (R$)
                 </label>
                 <input
-                  type="number"
-                  placeholder="0,00"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="R$ 0,00"
                   className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm"
                   value={form.target}
-                  onChange={(e) => setForm({ ...form, target: e.target.value })}
+                  onChange={(e) => setForm({ ...form, target: maskBRL(e.target.value) })}
+                    onBlur={(e) => setForm({ ...form, target: formatBRLInputValue(e.target.value) })}
+                    onFocus={(e) => e.currentTarget.select()}
                   required
                 />
               </div>
@@ -1627,7 +1720,7 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
                         setShowAdd(false);
                         setForm({
                           title: goal.title || '',
-                          target: String(goal.target ?? ''),
+                          target: formatBRLInputValue(goal.target),
                           due_date: goal.due_date || '',
                         });
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1747,10 +1840,10 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
 
     const cleanData = {
       ...form,
-      amount: Number(form.amount),
+      amount: parseBRL(form.amount),
       asset_due_date: (form.liquidity !== 'No Vencimento' || form.asset_due_date === "") ? null : form.asset_due_date,
       distributions: Object.fromEntries(
-        Object.entries(form.distributions).map(([key, val]) => [key, val === "" ? 0 : Number(val)])
+        Object.entries(form.distributions).map(([key, val]) => [key, parseBRL(String(val))])
       )
     };
 
@@ -1769,13 +1862,15 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
     setEditingId(inv.id);
     setForm({
       asset: inv.asset,
-      amount: inv.amount,
+      amount: formatBRLInputValue(inv.amount),
       category: inv.category,
       institution: inv.institution || '',
       liquidity: inv.liquidity || '',
       asset_due_date: inv.asset_due_date || '',
       fgc_covered: inv.fgc_covered || false,
-      distributions: inv.distributions || {}
+      distributions: Object.fromEntries(
+        Object.entries((inv.distributions ?? {}) as Record<string, string | number | null | undefined>).map(([k, v]) => [k, formatBRLInputValue(v)])
+      )
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1915,7 +2010,17 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Valor (R$)</label>
-                <input type="number" placeholder="0.00" className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm text-white" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} disabled={loading} />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="R$ 0,00"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 outline-none text-sm text-white"
+                  value={form.amount}
+                  onChange={e => setForm({ ...form, amount: maskBRL(e.target.value) })}
+                  onBlur={(e) => setForm({ ...form, amount: formatBRLInputValue(e.target.value) })}
+                  onFocus={(e) => e.currentTarget.select()}
+                  disabled={loading}
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Liquidez</label>
@@ -1965,7 +2070,22 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
                         {goal.title}
                       </button>
                       {form.distributions[goal.id] !== undefined && (
-                        <input type="number" disabled={loading} className="w-28 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-right text-white" placeholder="R$" value={form.distributions[goal.id]} onChange={(e) => setForm({...form, distributions: {...form.distributions, [goal.id]: e.target.value}})} />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          disabled={loading}
+                          className="w-32 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-right text-white"
+                          placeholder="R$ 0,00"
+                          value={form.distributions[goal.id]}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              distributions: { ...form.distributions, [goal.id]: maskBRL(e.target.value) },
+                            })
+                          }
+                        onBlur={(e) => setForm({ ...form, distributions: { ...form.distributions, [goal.id]: formatBRLInputValue(e.target.value) } })}
+                        onFocus={(e) => e.currentTarget.select()}
+                        />
                       )}
                     </div>
                   </div>
@@ -2137,6 +2257,14 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
                        <div className="flex items-center gap-1">
                           <Zap size={12} className="text-yellow-500/60" />
                           <span>{inv.liquidity}</span>
+                       </div>
+                    )}
+
+                    {/* Info extra para metas: se a liquidez é no vencimento, mostramos a data */}
+                    {inv.liquidity === 'No Vencimento' && inv.asset_due_date && (
+                       <div className="flex items-center gap-1 text-amber-400/90">
+                          <Milestone size={12} />
+                          <span>Venc.: {new Date(inv.asset_due_date).toLocaleDateString()}</span>
                        </div>
                     )}
                  </div>
