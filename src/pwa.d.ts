@@ -17,5 +17,6 @@ declare global {
 
   interface Window {
     __PWA_UPDATE_SW__?: (reload?: boolean) => Promise<void>;
+    __PWA_CHECK_UPDATES__?: () => Promise<void>;
   }
 }

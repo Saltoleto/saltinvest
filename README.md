@@ -42,5 +42,3 @@ npm run preview
 ## PWA
 O projeto usa `vite-plugin-pwa` e registra SW automaticamente (`src/main.tsx`).
 Em produção/preview, o app pode ser instalado como PWA (Chrome/Edge/Android, e iOS via "Adicionar à Tela de Início").
-
-

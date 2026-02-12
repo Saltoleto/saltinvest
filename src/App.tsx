@@ -70,6 +70,102 @@ const ProgressBar: React.FC<ProgressBarProps> = ({ progress, color = "bg-emerald
   </div>
 );
 
+
+
+// --- Confirmação (Modal Premium) ---
+type ConfirmDialogProps = {
+  open: boolean;
+  title: string;
+  description?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  loading?: boolean;
+  onConfirm: () => void | Promise<void>;
+  onCancel: () => void;
+};
+
+function ConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = 'Confirmar',
+  cancelLabel = 'Cancelar',
+  loading = false,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-5">
+      <div
+        className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+        onClick={() => {
+          if (!loading) onCancel();
+        }}
+      />
+
+      <div className="relative w-full max-w-md animate-in zoom-in-95 duration-200">
+        <div className="bg-slate-900/70 border border-red-500/20 rounded-[2rem] p-6 shadow-2xl backdrop-blur-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400">
+                <AlertTriangle size={22} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white leading-tight">{title}</h3>
+                {description && (
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">{description}</p>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!loading) onCancel();
+              }}
+              className="p-2 rounded-xl bg-slate-950/40 border border-slate-800 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X size={16} />
+            </button>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                if (!loading) onCancel();
+              }}
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50"
+              disabled={loading}
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              className="flex-1 bg-red-500 hover:bg-red-400 text-white p-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="animate-spin" size={16} />
+                  Processando
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} />
+                  {confirmLabel}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 // --- Componente de Autenticação ---
 function AuthView() {
   const [mode, setMode] = useState('login'); 
@@ -271,6 +367,36 @@ export default function App() {
   const [showUpdateHint, setShowUpdateHint] = useState(false);
   const [offlineReady, setOfflineReady] = useState(false);
   const updateRemindTimerRef = useRef<number | null>(null);
+  // --- Guard: sessão obrigatória (protege navegação e operações) ---
+  const redirectToLogin = () => {
+    setActiveTab('dashboard');
+    setUser(null);
+  };
+
+  const getSessionOrRedirect = async () => {
+    try {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (!session) {
+        redirectToLogin();
+        return null;
+      }
+      // Evita UI "stale" quando a sessão expira e o state ainda tem um user antigo
+      if (!user || (user as any).id !== session.user.id) {
+        setUser(session.user as any);
+      }
+      return session;
+    } catch (e) {
+      redirectToLogin();
+      return null;
+    }
+  };
+
+  const navigateTo = async (tab: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return;
+    setActiveTab(tab);
+  };
+
 
   // --- Supabase pronto via env (.env) ---
   useEffect(() => {
@@ -389,13 +515,14 @@ export default function App() {
       try {
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (session) {
-          setUser(session.user);
+          setUser(session.user as any);
         } else {
-          const { data, error } = await supabaseClient.auth.signInAnonymously();
-          if (!error) setUser(data.user);
+          // Sem sessão -> exige login
+          setUser(null);
         }
       } catch (err) {
         console.error("Auth error:", err);
+        setUser(null);
       } finally {
         setLoading(false);
       }
@@ -404,16 +531,39 @@ export default function App() {
     initAuth();
 
     const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      if (session?.user) {
+        setUser(session.user as any);
+      } else {
+        redirectToLogin();
+      }
     });
 
     return () => subscription.unsubscribe();
   }, [supabaseReady]);
 
+
+  // Revalida a sessão ao voltar para o app ou trocar o foco (evita operar sem JWT)
+  useEffect(() => {
+    if (!supabaseReady) return;
+    const check = () => { void getSessionOrRedirect(); };
+    const onFocus = () => check();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [supabaseReady]);
+
   // --- Sincronização de Dados ---
   const fetchData = async () => {
-    if (!user || !supabaseClient) return;
-    
+    const session = await getSessionOrRedirect();
+    if (!session) return;
+    const uid = session.user.id;
+
     try {
         const [
           { data: gData }, 
@@ -423,12 +573,12 @@ export default function App() {
           { data: config },
           { data: insightsData }
         ] = await Promise.all([
-          supabaseClient.from('goals').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabaseClient.from('investments').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-          supabaseClient.from('institutions').select('*').eq('user_id', user.id),
-          supabaseClient.from('asset_classes').select('*').eq('user_id', user.id),
-          supabaseClient.from('user_config').select('*').eq('user_id', user.id).maybeSingle(),
-          supabaseClient.from('ai_insights').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
+          supabaseClient.from('goals').select('*').eq('user_id', uid).order('created_at', { ascending: false }),
+          supabaseClient.from('investments').select('*').eq('user_id', uid).order('created_at', { ascending: false }),
+          supabaseClient.from('institutions').select('*').eq('user_id', uid),
+          supabaseClient.from('asset_classes').select('*').eq('user_id', uid),
+          supabaseClient.from('user_config').select('*').eq('user_id', uid).maybeSingle(),
+          supabaseClient.from('ai_insights').select('*').eq('user_id', uid).order('created_at', { ascending: false })
         ]);
 
         setGoals(gData || []);
@@ -437,8 +587,46 @@ export default function App() {
         setAssetClasses(cData || []);
         
         if (config) {
-          setAllocation(Object.fromEntries(Object.entries((config.allocation as Record<string, unknown>) || {}).map(([k, v]) => [k, Number(v) || 0])) as Record<string, number>);
-          setUserStats({ xp: config.xp || 0, level: config.level || 1 });
+          // Normaliza e poda o allocation para evitar chaves órfãs quando classes são removidas.
+          const validNames = new Set((cData || []).map((c: any) => String(c?.name || '')).filter(Boolean));
+          const rawAlloc = (config.allocation as Record<string, unknown>) || {};
+          const normalizedAlloc = Object.fromEntries(
+            Object.entries(rawAlloc).map(([k, v]) => [k, Number(v) || 0])
+          ) as Record<string, number>;
+
+          const prunedAlloc = Object.fromEntries(
+            Object.entries(normalizedAlloc).filter(([k]) => validNames.size === 0 ? false : validNames.has(k))
+          ) as Record<string, number>;
+
+          const hasAnyClass = validNames.size > 0;
+          const hasAnyAlloc = Object.keys(prunedAlloc).length > 0;
+
+          // Regra: se allocation ficar nulo/vazio, removemos o registro do user_config.
+          if (!hasAnyAlloc) {
+            if (!hasAnyClass) {
+              // Não há classes — garante que o user_config não permaneça com allocation órfão.
+              await supabaseClient.from('user_config').delete().eq('user_id', uid);
+              setAllocation({});
+              setUserStats({ xp: 0, level: 1 });
+            } else {
+              // Há classes, mas allocation vazio (ainda não configurado).
+              setAllocation({});
+              setUserStats({ xp: config.xp || 0, level: config.level || 1 });
+            }
+          } else {
+            // Se houve poda (existiam chaves inválidas), persiste a versão limpa.
+            const before = JSON.stringify(normalizedAlloc);
+            const after = JSON.stringify(prunedAlloc);
+            if (before !== after) {
+              await supabaseClient.from('user_config').update({ allocation: prunedAlloc }).eq('user_id', uid);
+            }
+            setAllocation(prunedAlloc);
+            setUserStats({ xp: config.xp || 0, level: config.level || 1 });
+          }
+        } else {
+          // Sem config — mantém estado coerente.
+          setAllocation({});
+          setUserStats({ xp: 0, level: 1 });
         }
 
         if (insightsData && insightsData.length > 0) {
@@ -466,7 +654,10 @@ export default function App() {
 
   // --- Lógica de Insights de IA ---
   const generateAIInsights = async () => {
-    if (!user || isAiLoading) return;
+    if (isAiLoading) return;
+    const session = await getSessionOrRedirect();
+    if (!session) return;
+    const uid = session.user.id;
     setIsAiLoading(true);
     setAiError(null);
 
@@ -546,10 +737,10 @@ export default function App() {
           const { error: delError } = await supabaseClient
             .from('ai_insights')
             .delete()
-            .eq('user_id', user.id);
+            .eq('user_id', uid);
           if (delError) throw delError;
 
-          const rows = content.insights.map(i => ({ ...i, user_id: user.id }));
+          const rows = content.insights.map(i => ({ ...i, user_id: uid }));
           const { error: insError } = await supabaseClient
             .from('ai_insights')
             .insert(rows);
@@ -574,78 +765,157 @@ export default function App() {
   };
 
   // --- Handlers ---
-  const handleAddGoal = async (goalData) => {
-    const { error } = await supabaseClient.from('goals').insert([{ ...goalData, user_id: user.id, target: Number(goalData.target) }]);
-    if (!error) await fetchData();
-    return { error };
+  const handleAddGoal = async (goalData: any) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('goals').insert([{ ...goalData, user_id: uid }]);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
   };
 
-  const handleUpdateGoal = async (id, goalData) => {
-    const { error } = await supabaseClient.from('goals').update({ ...goalData, target: Number(goalData.target) }).eq('id', id);
-    if (!error) await fetchData();
-    return { error };
+  const handleUpdateGoal = async (goalId: string, goalData: any) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('goals').update(goalData).eq('id', goalId).eq('user_id', uid);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
   };
 
-  const handleDeleteGoal = async (id) => {
-    const { error } = await supabaseClient.from('goals').delete().eq('id', id);
-    if (!error) await fetchData();
-    return { error };
+  const handleDeleteGoal = async (goalId: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('goals').delete().eq('id', goalId).eq('user_id', uid);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
   };
 
-  const handleAddInvestment = async (data) => {
-    const { error } = await supabaseClient.from('investments').insert([{ ...data, user_id: user.id }]);
-    if (!error) {
-      const newXp = userStats.xp + Math.floor(data.amount / 10);
-      await supabaseClient.from('user_config').upsert({ user_id: user.id, xp: newXp });
-      await fetchData();
+  const handleAddInvestment = async (investmentData: any) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('investments').insert([{ ...investmentData, user_id: uid }]);
+    if (error) return { error };
+
+    const amount = Number(investmentData.amount) || 0;
+    const nxp = userStats.xp + Math.floor(amount / 10);
+    await supabaseClient.from('user_config').upsert({ user_id: uid, xp: nxp });
+
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleUpdateInvestment = async (investmentId: string, investmentData: any) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('investments').update(investmentData).eq('id', investmentId).eq('user_id', uid);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleDeleteInvestment = async (investmentId: string, amount: number) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('investments').delete().eq('id', investmentId).eq('user_id', uid);
+    if (error) return { error };
+
+    const nxp = Math.max(0, userStats.xp - Math.floor((Number(amount) || 0) / 10));
+    await supabaseClient.from('user_config').upsert({ user_id: uid, xp: nxp });
+
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleSaveAllocation = async (allocationData: any) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('user_config').upsert({ user_id: uid, allocation: allocationData });
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleAddInstitution = async (name: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('institutions').insert([{ name, user_id: uid }]);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleDeleteInstitution = async (id: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('institutions').delete().eq('id', id).eq('user_id', uid);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleAddAssetClass = async (name: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient.from('asset_classes').insert([{ name, user_id: uid }]);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+  const handleDeleteAssetClass = async (id: string, className: string) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    // Remove a classe
+    const { error } = await supabaseClient.from('asset_classes').delete().eq('id', id).eq('user_id', uid);
+    if (error) return { error };
+
+    // Remove também do allocation (user_config)
+    const { data: conf } = await supabaseClient
+      .from('user_config')
+      .select('allocation')
+      .eq('user_id', uid)
+      .maybeSingle();
+
+    const currentAllocation = (conf as any)?.allocation || {};
+    if (currentAllocation && typeof currentAllocation === 'object') {
+      const nextAllocation: Record<string, any> = { ...currentAllocation };
+      delete nextAllocation[className];
+
+      const hasAnyKey = Object.keys(nextAllocation).length > 0;
+      if (!hasAnyKey) {
+        // se allocation ficou vazia (ou nula), remove o registro do user_config
+        await supabaseClient.from('user_config').delete().eq('user_id', uid);
+      } else {
+        await supabaseClient.from('user_config').upsert({ user_id: uid, allocation: nextAllocation });
+      }
     }
-    return { error };
-  };
 
-  const handleUpdateInvestment = async (id, data) => {
-    const { error } = await supabaseClient.from('investments').update(data).eq('id', id);
-    if (!error) await fetchData();
-    return { error };
-  };
-
-  const handleDeleteInvestment = async (id, amount) => {
-    const { error } = await supabaseClient.from('investments').delete().eq('id', id);
-    if (!error) {
-      const newXp = Math.max(0, userStats.xp - Math.floor(amount / 10));
-      await supabaseClient.from('user_config').upsert({ user_id: user.id, xp: newXp });
-      await fetchData();
-    }
-    return { error };
-  };
-
-  const handleSaveAllocation = async (data) => {
-    const { error } = await supabaseClient.from('user_config').upsert({ user_id: user.id, allocation: data });
-    if (!error) await fetchData();
-    return { error };
-  };
-
-  const handleAddInstitution = async (name) => {
-    const { error } = await supabaseClient.from('institutions').insert([{ name, user_id: user.id }]);
-    if (!error) await fetchData();
-    return { error };
-  };
-
-  const handleDeleteInstitution = async (id) => {
-    const { error } = await supabaseClient.from('institutions').delete().eq('id', id);
-    if (!error) await fetchData();
-    return { error };
-  };
-
-  const handleAddAssetClass = async (name) => {
-    const { error } = await supabaseClient.from('asset_classes').insert([{ name, user_id: user.id }]);
-    if (!error) await fetchData();
-    return { error };
-  };
-
-  const handleDeleteAssetClass = async (id) => {
-    const { error } = await supabaseClient.from('asset_classes').delete().eq('id', id);
-    if (!error) await fetchData();
-    return { error };
+    await fetchData();
+    return { error: null };
   };
 
   // --- Stats ---
@@ -721,7 +991,7 @@ export default function App() {
             >
               {isPrivate ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
-            <div className="bg-slate-800/50 p-2 rounded-full border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => setActiveTab('profile')}>
+            <div className="bg-slate-800/50 p-2 rounded-full border border-slate-700 cursor-pointer hover:bg-slate-800 transition-colors" onClick={() => void navigateTo('profile')}>
               <Award className="w-5 h-5 text-yellow-500" />
             </div>
           </div>
@@ -791,15 +1061,15 @@ export default function App() {
 
       <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800/40 rounded-3xl p-2 shadow-2xl z-50">
         <ul className="flex justify-around items-center">
-          <NavItem active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard />} label="Início" />
-          <NavItem active={activeTab === 'goals'} onClick={() => setActiveTab('goals')} icon={<Target />} label="Metas" />
+          <NavItem active={activeTab === 'dashboard'} onClick={() => void navigateTo('dashboard')} icon={<LayoutDashboard />} label="Início" />
+          <NavItem active={activeTab === 'goals'} onClick={() => void navigateTo('goals')} icon={<Target />} label="Metas" />
           <div className="relative -top-6">
-            <button onClick={() => setActiveTab('invest')} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-4 rounded-2xl shadow-xl shadow-emerald-500/20 transition-all active:scale-95">
+            <button onClick={() => void navigateTo('invest')} className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 p-4 rounded-2xl shadow-xl shadow-emerald-500/20 transition-all active:scale-95">
               <PlusCircle className="w-7 h-7" />
             </button>
           </div>
-          <NavItem active={activeTab === 'allocation'} onClick={() => setActiveTab('allocation')} icon={<PieChart />} label="Config" />
-          <NavItem active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} icon={<Award />} label="Rank" />
+          <NavItem active={activeTab === 'allocation'} onClick={() => void navigateTo('allocation')} icon={<PieChart />} label="Config" />
+          <NavItem active={activeTab === 'profile'} onClick={() => void navigateTo('profile')} icon={<Award />} label="Rank" />
         </ul>
       </nav>
     </div>
@@ -1074,6 +1344,10 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [deleteConfirm, setDeleteConfirm] = useState(null as null | { id: string; title: string });
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState(null as string | null);
+
   const filteredGoals = useMemo(() => {
     const q = (searchTerm || '').toLowerCase().trim();
     return goals.filter((g) => {
@@ -1130,6 +1404,40 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
 
   return (
     <div className="space-y-6 animate-in fade-in">
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Excluir meta"
+        description={deleteConfirm ? `Você está prestes a excluir a meta "${deleteConfirm.title}". Esta ação não pode ser desfeita.` : undefined}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        loading={deleteLoading}
+        onCancel={() => { if (!deleteLoading) setDeleteConfirm(null); }}
+        onConfirm={async () => {
+          if (!deleteConfirm) return;
+          setDeleteLoading(true);
+          setDeleteError(null);
+          try {
+            const res: any = await onDelete(deleteConfirm.id);
+            if (res?.error) {
+              setDeleteError(res.error.message || 'Não foi possível excluir a meta.');
+            } else {
+              setDeleteConfirm(null);
+            }
+          } catch (e: any) {
+            setDeleteError(e?.message || 'Não foi possível excluir a meta.');
+          } finally {
+            setDeleteLoading(false);
+          }
+        }}
+      />
+
+      {deleteError && (
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold text-center animate-in zoom-in-95">
+          {deleteError}
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-black">Metas</h2>
         <div className="flex gap-2">
@@ -1330,7 +1638,7 @@ function GoalsView({ goals, investments, onAdd, onUpdate, onDelete }) {
                       <Edit2 size={14} />
                     </button>
                     <button
-                      onClick={() => onDelete(goal.id)}
+                      onClick={() => { setDeleteError(null); setDeleteConfirm({ id: goal.id, title: goal.title }); }}
                       className="p-2.5 bg-slate-800 rounded-xl hover:text-red-500"
                       type="button"
                     >
@@ -1361,6 +1669,9 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Todas');
@@ -1474,6 +1785,36 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
 
   return (
     <div className="space-y-8 animate-in zoom-in-95 duration-500">
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Excluir aporte"
+        description={deleteConfirm ? `Você está prestes a excluir o aporte "${deleteConfirm.asset}" (${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(deleteConfirm.amount || 0))}). Esta ação não pode ser desfeita.` : undefined}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        loading={deleteLoading}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteConfirm(null);
+        }}
+        onConfirm={async () => {
+          if (!deleteConfirm || deleteLoading) return;
+          setDeleteLoading(true);
+          setDeleteError(null);
+          const res = await onDelete(deleteConfirm.id, deleteConfirm.amount);
+          if (res?.error) {
+            setDeleteError(res.error.message || 'Não foi possível excluir o aporte.');
+            setDeleteLoading(false);
+            return;
+          }
+          setDeleteConfirm(null);
+          setDeleteLoading(false);
+        }}
+      />
+      {deleteError && (
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold text-center animate-in fade-in">
+          {deleteError}
+        </div>
+      )}
       
       <Card className="bg-gradient-to-br from-slate-900 to-indigo-950/20 border-indigo-500/20 relative overflow-hidden">
          <div className="flex items-center justify-between mb-4">
@@ -1771,7 +2112,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, institutions, assetClass
                       <Edit2 size={16} />
                     </button>
                     <button 
-                      onClick={() => onDelete(inv.id, inv.amount)}
+                      onClick={() => { setDeleteError(null); setDeleteConfirm({ id: inv.id, asset: inv.asset, amount: inv.amount }); }}
                       className="p-2 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
                     >
                       <Trash2 size={16} />
@@ -1822,6 +2163,9 @@ function SettingsView({ allocation, saveAlloc, institutions, onAddInst, onDelete
   const [loading, setLoading] = useState({ inst: false, cls: false, alloc: false });
   const [error, setError] = useState({ inst: null, cls: null, alloc: null });
 
+  const [deleteConfirm, setDeleteConfirm] = useState(null as null | { kind: 'class' | 'inst'; id: string; name: string });
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   useEffect(() => {
     if (Object.keys(allocation).length > 0) setLocalAlloc(allocation);
     else setLocalAlloc(Object.fromEntries(assetClasses.map((cat: any) => [cat.name, 0])) as Record<string, number>);
@@ -1856,6 +2200,37 @@ function SettingsView({ allocation, saveAlloc, institutions, onAddInst, onDelete
 
   return (
     <div className="space-y-8 animate-in fade-in pb-10">
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        title="Excluir item"
+        description={deleteConfirm ? `Deseja excluir "${deleteConfirm.name}"? Esta ação não pode ser desfeita.` : undefined}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        loading={deleteLoading}
+        onCancel={() => {
+          if (deleteLoading) return;
+          setDeleteConfirm(null);
+        }}
+        onConfirm={async () => {
+          if (!deleteConfirm || deleteLoading) return;
+          setDeleteLoading(true);
+          const res = deleteConfirm.kind === 'class'
+            ? await onDeleteClass(deleteConfirm.id)
+            : await onDeleteInst(deleteConfirm.id);
+
+          if (res?.error) {
+            setError((prev) => ({
+              ...prev,
+              [deleteConfirm.kind === 'class' ? 'cls' : 'inst']: res.error.message || 'Não foi possível excluir.'
+            }));
+            setDeleteLoading(false);
+            return;
+          }
+
+          setDeleteConfirm(null);
+          setDeleteLoading(false);
+        }}
+      />
       <section>
         <h2 className="text-2xl font-black mb-6 flex items-center gap-2"><PieIcon className="text-emerald-500" /> Estratégia Ideal</h2>
         <Card>
@@ -1895,7 +2270,7 @@ function SettingsView({ allocation, saveAlloc, institutions, onAddInst, onDelete
               {assetClasses.map(cls => (
                 <div key={cls.id} className="flex justify-between items-center bg-slate-950/40 p-4 rounded-2xl border border-slate-800/60 group">
                   <span className="text-xs font-bold text-slate-300">{cls.name}</span>
-                  <button onClick={() => onDeleteClass(cls.id)} className="text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
+                  <button onClick={() => { setError((p) => ({ ...p, cls: null })); setDeleteConfirm({ kind: 'class', id: cls.id, name: cls.name }); }} className="text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={14} /></button>
                 </div>
               ))}
             </div>
@@ -1915,7 +2290,7 @@ function SettingsView({ allocation, saveAlloc, institutions, onAddInst, onDelete
               {institutions.map(inst => (
                 <div key={inst.id} className="flex justify-between items-center bg-slate-950/40 p-4 rounded-2xl border border-slate-800/60 group">
                   <span className="text-xs font-bold text-slate-300">{inst.name}</span>
-                  <button onClick={() => onDeleteInst(inst.id)} className="text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
+                  <button onClick={() => { setError((p) => ({ ...p, inst: null })); setDeleteConfirm({ kind: 'inst', id: inst.id, name: inst.name }); }} className="text-slate-600 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"><Trash2 size={16} /></button>
                 </div>
               ))}
             </div>
