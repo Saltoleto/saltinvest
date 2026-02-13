@@ -513,6 +513,8 @@ export default function App() {
   const [aiInsights, setAiInsights] = useState([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiError, setAiError] = useState(null);
+  // Garante que o auto-trigger rode apenas uma vez por sessão (além do controle diário via localStorage)
+  const [aiAutoTriggered, setAiAutoTriggered] = useState(false);
 
   // --- PWA: instalação + atualização ---
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
@@ -821,7 +823,7 @@ export default function App() {
         if (insightsData && insightsData.length > 0) {
           setAiInsights(insightsData);
         } else {
-          setAiInsights([{ type: 'Info', text: 'Clique em gerar insights para uma análise personalizada.' }]);
+          setAiInsights([{ type: 'Info', text: 'Os insights serão gerados automaticamente uma vez por dia no seu primeiro acesso.' }]);
         }
 
         // Progresso de metas (via view) - com fallback local para ambientes sem a view.
@@ -966,6 +968,38 @@ export default function App() {
     await fetchWithRetry();
     setIsAiLoading(false);
   };
+
+  // Gera insights automaticamente 1x por dia (preferencialmente no primeiro acesso do dia).
+  // Estratégia: localStorage por usuário (simples, offline-friendly, evita duplicidade entre abas quando o valor já foi setado).
+  const getLocalISODate = () => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  useEffect(() => {
+    if (!user || !supabaseReady || !supabaseClient) return;
+    if (loading) return;
+    if (aiAutoTriggered) return;
+
+    const uid = (user as any).id;
+    const key = `saltinvest_ai_last_run_${uid}`;
+    const today = getLocalISODate();
+    const last = localStorage.getItem(key);
+
+    // Já executou hoje
+    if (last === today) {
+      setAiAutoTriggered(true);
+      return;
+    }
+
+    // Marca já na largada para evitar múltiplos triggers no mesmo dia (mesmo que haja erro).
+    localStorage.setItem(key, today);
+    setAiAutoTriggered(true);
+    void generateAIInsights();
+  }, [user, supabaseReady, loading, aiAutoTriggered]);
 
   // --- Handlers ---
   const handleAddGoal = async (goalData: any) => {
@@ -1747,15 +1781,8 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
       <section>
         <div className="flex items-center justify-between mb-4 ml-1">
           <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
-             <Sparkles size={14} className="text-emerald-500" /> Smart AI Insights
+             <Sparkles size={14} className="text-emerald-500" /> INSIGHTS DO DIA SALTINVEST
           </h3>
-          <button 
-            onClick={onRefreshAi} 
-            disabled={isAiLoading}
-            className={`p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-500 hover:bg-slate-800 transition-all ${isAiLoading ? 'animate-spin opacity-50' : ''}`}
-          >
-            <RefreshCw size={14} />
-          </button>
         </div>
 
         {aiError && (
@@ -1770,12 +1797,21 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
               <RefreshCw className="animate-spin text-emerald-500 mx-auto mb-3" size={24} />
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">A processar a sua carteira...</p>
             </div>
-          ) : aiInsights.length > 0 ? aiInsights.map((insight, idx) => (
+          ) : aiInsights.length > 0 ? (
+            [...aiInsights]
+              .sort((a: any, b: any) => {
+                const order: Record<string, number> = { 'Alerta': 0, 'Dica': 1, 'Oportunidade': 2 };
+                const oa = order[String(a?.type || '')] ?? 9;
+                const ob = order[String(b?.type || '')] ?? 9;
+                return oa - ob;
+              })
+              .map((insight: any, idx: number) => (
             <div key={idx} className="bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60 animate-in fade-in slide-in-from-right-2 duration-500 shadow-sm group hover:border-emerald-500/20 transition-all">
               <p className="text-[9px] font-black uppercase mb-1.5 text-emerald-400 tracking-widest">{insight.type || 'Insight'}</p>
               <p className="text-xs text-slate-300 leading-relaxed">{insight.text}</p>
             </div>
-          )) : (
+          ))
+          ) : (
             <div className="col-span-full text-center p-6 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl text-slate-600 text-[10px] uppercase font-bold tracking-widest">
               Nenhuma recomendação gerada.
             </div>
