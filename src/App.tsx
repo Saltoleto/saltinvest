@@ -70,6 +70,18 @@ const brlFormatter = new Intl.NumberFormat('pt-BR', {
   maximumFractionDigits: 2,
 });
 
+// Formata um valor (em reais) para BRL garantindo arredondamento em 2 casas.
+// Evita glitches de ponto flutuante (ex.: 166.666666666 -> "R$ 166,67").
+function formatBRLFromNumber(value: unknown): string {
+  const num = typeof value === 'number'
+    ? value
+    : Number(String(value ?? '').replace(/[^0-9,.-]/g, '').replace(',', '.'));
+
+  if (!Number.isFinite(num)) return brlFormatter.format(0);
+  const rounded = Math.round(num * 100) / 100;
+  return brlFormatter.format(rounded);
+}
+
 function parseBRL(value: unknown): number {
   if (value == null) return 0;
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -147,9 +159,37 @@ function maskBRL(input: string): string {
 
 function formatBRLInputValue(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '';
-  const s = typeof value === 'number' ? String(value) : String(value);
+  // IMPORTANT:
+  // - Para valores NUMÉRICOS vindos do banco (ex.: 2400), NÃO podemos usar parseBRL em cima do
+  //   `String(2400)` porque o parseBRL tem a regra "digits-as-cents" ("2400" => 24,00).
+  //   Isso quebrava edição/reatribuição de valores e causava a redução (R$ 2.400,00 -> R$ 24,00).
+  if (typeof value === 'number') {
+    return formatBRLFromNumber(value);
+  }
+
+  const s = String(value);
   if (!s.trim()) return '';
   return brlFormatter.format(parseBRL(s));
+}
+
+// Converte "YYYY-MM-DD" (date do Postgres/Supabase) para Date LOCAL (evita shift por timezone).
+// Sem isso, `new Date('2026-03-01')` é interpretado como UTC e pode virar o dia anterior em -03,
+// gerando meses incorretos nas sugestões.
+function parseDateLocal(dateStr: string): Date {
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})\s*$/.exec(dateStr || '');
+  if (!m) return new Date(dateStr);
+  const year = Number(m[1]);
+  const month = Number(m[2]) - 1;
+  const day = Number(m[3]);
+  return new Date(year, month, day);
+}
+
+// Formata uma data (YYYY-MM-DD) sem sofrer shift de timezone.
+function formatDateBR(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const d = parseDateLocal(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('pt-BR');
 }
 
 // Sugestão mensal (mesma regra usada no Plano do Mês e no pré-preenchimento ao vincular metas)
@@ -157,7 +197,7 @@ function calcSuggestedMonthly(remaining: number, dueDate?: string | null): numbe
   if (!Number.isFinite(remaining) || remaining <= 0) return 0;
   if (!dueDate) return null;
   const now = new Date();
-  const due = new Date(dueDate);
+  const due = parseDateLocal(dueDate);
   // Se já venceu, sugerimos aportar tudo (ou zero se já atingiu)
   if (Number.isNaN(due.getTime())) return null;
   if (due < new Date(new Date().toDateString())) return remaining;
@@ -669,7 +709,7 @@ export default function App() {
       const target = Number(g.target || 0);
       const progress_percent = target > 0 ? (invested_amount / target) * 100 : 0;
       const remaining_amount = Math.max(0, target - invested_amount);
-      const due = g.due_date ? new Date(g.due_date) : null;
+      const due = g.due_date ? parseDateLocal(g.due_date) : null;
       const status = target > 0 && invested_amount >= target
         ? 'Concluída'
         : (due && due < new Date(today.toDateString()) ? 'Atrasada' : 'Ativa');
@@ -1393,8 +1433,8 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
         remaining_amount: Number((g as any).remaining_amount ?? Math.max(0, Number(g.target || 0) - Number((g as any).invested_amount ?? 0))),
       }))
       .sort((a, b) => {
-        const ta = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-        const tb = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
         if (ta !== tb) return ta - tb;
         return (b.progress_percent || 0) - (a.progress_percent || 0);
       });
@@ -1428,8 +1468,8 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
         };
       })
       .sort((a, b) => {
-        const ta = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-        const tb = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
         if (ta !== tb) return ta - tb;
         return b.remaining - a.remaining;
       });
@@ -1448,18 +1488,28 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
   };
 
   const monthPlanColored = useMemo(() => {
-    const items = monthPlan.items.map((it) => ({ ...it, color: goalColor(String(it.id)) }));
-    const total = monthPlan.total || 0;
-    const segments = total > 0
-      ? items.map((it) => ({
-          id: it.id,
-          title: it.title,
-          color: it.color,
-          // evita NaN
-          pct: Math.max(0, (Number(it.monthly) || 0) / total) * 100,
-        }))
-      : [];
-    return { ...monthPlan, items, segments };
+    const enriched = (monthPlan.items || []).map((it: any) => {
+      const monthlyNum = parseBRL(it.monthly);
+      const id = it.id ?? it.goal_id;
+      return { ...it, id, monthlyNum, color: goalColor(String(id)) };
+    });
+
+    const ordered = [...enriched].sort((a, b) => (b.monthlyNum || 0) - (a.monthlyNum || 0));
+    const total = ordered.reduce((s, it) => s + (it.monthlyNum || 0), 0);
+
+    const items = ordered.map((it: any) => ({
+      ...it,
+      pct: total > 0 ? ((it.monthlyNum || 0) / total) * 100 : 0,
+    }));
+
+    const segments = items.map((it: any) => ({
+      id: it.id,
+      title: it.title,
+      color: it.color,
+      pct: it.pct,
+    }));
+
+    return { ...monthPlan, total, items, segments };
   }, [monthPlan]);
 
 
@@ -1503,45 +1553,6 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
         </Card>
       </div>
 
-      <section>
-        <div className="flex items-center justify-between mb-4 ml-1">
-          <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
-             <Sparkles size={14} className="text-emerald-500" /> Smart AI Insights
-          </h3>
-          <button 
-            onClick={onRefreshAi} 
-            disabled={isAiLoading}
-            className={`p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-500 hover:bg-slate-800 transition-all ${isAiLoading ? 'animate-spin opacity-50' : ''}`}
-          >
-            <RefreshCw size={14} />
-          </button>
-        </div>
-
-        {aiError && (
-          <div className="p-4 mb-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs text-center font-bold">
-            {aiError}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {isAiLoading ? (
-            <div className="col-span-full text-center p-12 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
-              <RefreshCw className="animate-spin text-emerald-500 mx-auto mb-3" size={24} />
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">A processar a sua carteira...</p>
-            </div>
-          ) : aiInsights.length > 0 ? aiInsights.map((insight, idx) => (
-            <div key={idx} className="bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60 animate-in fade-in slide-in-from-right-2 duration-500 shadow-sm group hover:border-emerald-500/20 transition-all">
-              <p className="text-[9px] font-black uppercase mb-1.5 text-emerald-400 tracking-widest">{insight.type || 'Insight'}</p>
-              <p className="text-xs text-slate-300 leading-relaxed">{insight.text}</p>
-            </div>
-          )) : (
-            <div className="col-span-full text-center p-6 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl text-slate-600 text-[10px] uppercase font-bold tracking-widest">
-              Nenhuma recomendação gerada.
-            </div>
-          )}
-        </div>
-      </section>
-
       <section className="space-y-4">
         <div className="flex items-center justify-between ml-1">
           <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
@@ -1566,7 +1577,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
                   <h4 className="text-base font-black text-white truncate mt-1">{g.title}</h4>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
-                      <Calendar size={12} className="inline mr-1" /> {g.due_date ? new Date(g.due_date).toLocaleDateString('pt-BR') : 'Sem prazo'}
+                      <Calendar size={12} className="inline mr-1" /> {g.due_date ? formatDateBR(g.due_date) : 'Sem prazo'}
                     </span>
                     <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
                       Falta {formatVal(remaining)}
@@ -1607,7 +1618,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
                 <h4 className="font-black text-[10px] uppercase tracking-widest text-emerald-400 flex items-center gap-2">
                   <Target size={14} /> Plano do Mês
                 </h4>
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">(colapsável)</span>
+                {/* removido: etiqueta "colapsável" */}
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
@@ -1642,9 +1653,10 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
 
                 <div className="space-y-3">
 	                  {monthPlanColored.items.map((it) => {
-	                    const seg = monthPlanColored.segments.find(s => String(s.id) === String(it.id));
-	                    const pct = seg?.pct ?? 0;
-	                    const suggested = Number(it.monthly || 0);
+	                    // Percentual correto = participação da sugestão desta meta no Total Sugerido do Mês.
+	                    // (Mantemos o cálculo na própria `monthPlanColored.items` para evitar qualquer mismatch de ids.)
+	                    const pct = typeof it.pct === 'number' ? it.pct : 0;
+	                    const suggested = typeof it.monthly === 'number' ? it.monthly : Number(it.monthly || 0);
                     return (
 	                      <div key={String(it.id)} className="bg-slate-950/40 border border-slate-800/60 rounded-3xl p-4">
                         <div className="flex items-center justify-between">
@@ -1654,7 +1666,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
                               Sugestão do mês:{' '}
 	                              <span className="font-black text-emerald-400">{formatVal(suggested)}</span>
                               {it.due_date ? (
-                                <span className="text-slate-600"> • vence em {new Date(it.due_date).toLocaleDateString('pt-BR')}</span>
+                                <span className="text-slate-600"> • vence em {formatDateBR(it.due_date)}</span>
                               ) : (
                                 <span className="text-slate-600"> • sem vencimento</span>
                               )}
@@ -1662,7 +1674,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
                           </div>
 	                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{pct.toFixed(0)}%</span>
                         </div>
-                        <div className="mt-3 w-full bg-slate-800/50 rounded-full h-2 overflow-hidden border border-slate-700/30">
+                        <div className="mt-3 w-full bg-slate-800/50 rounded-full overflow-hidden border border-slate-700/30" style={{ height: `${Math.round(6 + (Math.min(100, Math.max(0, pct)) / 100) * 10)}px` }}>
                           <div className="h-full w-full" style={{ backgroundColor: it.color }} />
                         </div>
                       </div>
@@ -1701,8 +1713,8 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
               {activeGoals.slice(0, 6).map((g, idx) => {
                 const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
                 const remaining = Math.max(0, g.remaining_amount || 0);
-                const dueLabel = g.due_date ? new Date(g.due_date).toLocaleDateString('pt-BR') : 'Sem prazo';
-                const isOverdue = g.due_date ? new Date(g.due_date) < new Date(new Date().toDateString()) && prog < 100 : false;
+                const dueLabel = g.due_date ? formatDateBR(g.due_date) : 'Sem prazo';
+                const isOverdue = g.due_date ? parseDateLocal(g.due_date) < new Date(new Date().toDateString()) && prog < 100 : false;
                 return (
                   <div key={g.goal_id || g.id || idx} className="flex gap-3">
                     <div className="flex flex-col items-center">
@@ -1731,6 +1743,46 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
           </Card>
         )}
       </section>
+
+      <section>
+        <div className="flex items-center justify-between mb-4 ml-1">
+          <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
+             <Sparkles size={14} className="text-emerald-500" /> Smart AI Insights
+          </h3>
+          <button 
+            onClick={onRefreshAi} 
+            disabled={isAiLoading}
+            className={`p-2 rounded-xl bg-slate-900 border border-slate-800 text-emerald-500 hover:bg-slate-800 transition-all ${isAiLoading ? 'animate-spin opacity-50' : ''}`}
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
+
+        {aiError && (
+          <div className="p-4 mb-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs text-center font-bold">
+            {aiError}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {isAiLoading ? (
+            <div className="col-span-full text-center p-12 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
+              <RefreshCw className="animate-spin text-emerald-500 mx-auto mb-3" size={24} />
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">A processar a sua carteira...</p>
+            </div>
+          ) : aiInsights.length > 0 ? aiInsights.map((insight, idx) => (
+            <div key={idx} className="bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60 animate-in fade-in slide-in-from-right-2 duration-500 shadow-sm group hover:border-emerald-500/20 transition-all">
+              <p className="text-[9px] font-black uppercase mb-1.5 text-emerald-400 tracking-widest">{insight.type || 'Insight'}</p>
+              <p className="text-xs text-slate-300 leading-relaxed">{insight.text}</p>
+            </div>
+          )) : (
+            <div className="col-span-full text-center p-6 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl text-slate-600 text-[10px] uppercase font-bold tracking-widest">
+              Nenhuma recomendação gerada.
+            </div>
+          )}
+        </div>
+      </section>
+
     </div>
   );
 }
@@ -1741,11 +1793,34 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
 
   // Filtros
   const [showFilters, setShowFilters] = useState(false);
+
+  const [goalPickSearch, setGoalPickSearch] = useState('');
+  const [goalPickFilter, setGoalPickFilter] = useState<'ativas' | 'concluidas' | 'todas'>('ativas');
   const [searchTerm, setSearchTerm] = useState('');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
 
   const [form, setForm] = useState({ title: '', target: '', due_date: '' });
+
+  const [statusFilter, setStatusFilter] = useState<'ativas' | 'concluidas' | 'todas'>('ativas');
+
+  const progressById = useMemo(() => {
+    const m = new Map<string, any>();
+    (goalProgress || []).forEach((gp: any) => m.set(String(gp.goal_id), gp));
+    return m;
+  }, [goalProgress]);
+
+  const statusCounts = useMemo(() => {
+    let active = 0;
+    let completed = 0;
+    goals.forEach((g: any) => {
+      const gp = progressById.get(String(g.id));
+      const isCompleted = Boolean(gp?.is_completed);
+      if (isCompleted) completed += 1;
+      else active += 1;
+    });
+    return { active, completed, total: goals.length };
+  }, [goals, progressById]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1761,14 +1836,20 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
       // Filtro de Data (vencimento)
       if (dateStart || dateEnd) {
         if (!g.due_date) return false;
-        const gDate = new Date(g.due_date);
-        if (dateStart && gDate < new Date(dateStart)) return false;
-        if (dateEnd && gDate > new Date(dateEnd)) return false;
+        const gDate = parseDateLocal(g.due_date);
+        if (dateStart && gDate < parseDateLocal(dateStart)) return false;
+        if (dateEnd && gDate > parseDateLocal(dateEnd)) return false;
       }
 
-      return matchSearch;
+      const gp = progressById.get(String(g.id));
+      const isCompleted = Boolean(gp?.is_completed);
+      const matchStatus =
+        statusFilter === 'todas' ||
+        (statusFilter === 'concluidas' ? isCompleted : !isCompleted);
+
+      return matchSearch && matchStatus;
     });
-  }, [goals, searchTerm, dateStart, dateEnd]);
+  }, [goals, searchTerm, dateStart, dateEnd, progressById, statusFilter]);
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -2018,7 +2099,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
                       {goal.due_date && (
                         <span className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1 bg-slate-800/50 px-2 py-0.5 rounded-md">
                           <Calendar size={10} />{' '}
-                          {new Date(goal.due_date).toLocaleDateString('pt-BR')}
+                          {formatDateBR(goal.due_date)}
                         </span>
                       )}
                     </div>
@@ -2084,6 +2165,9 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
   const [showFilters, setShowFilters] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Todas');
   const [filterInstitution, setFilterInstitution] = useState('Todas');
+  // Filtros para seleção de metas ao vincular no investimento (escala bem com muitas metas)
+  const [goalPickSearch, setGoalPickSearch] = useState('');
+  const [goalPickFilter, setGoalPickFilter] = useState<'todas' | 'ativas' | 'concluidas'>('ativas');
   const [showFgcDetail, setShowFgcDetail] = useState(false);
   
   const FGC_LIMIT = 250000;
@@ -2163,6 +2247,27 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
     });
   }, [investments, searchTerm, filterCategory, filterInstitution]);
 
+  const goalProgressById = useMemo(() => {
+    const m = new Map<string, any>();
+    (goalProgress || []).forEach((gp: any) => m.set(String(gp.goal_id), gp));
+    return m;
+  }, [goalProgress]);
+
+  const goalsForAllocation = useMemo(() => {
+    const q = (goalPickSearch || '').toLowerCase().trim();
+    return goals
+      .filter((g: any) => (g.title || '').toLowerCase().includes(q))
+      .filter((g: any) => {
+        const gp = goalProgressById.get(String(g.id));
+        const isCompleted = Boolean(gp?.is_completed);
+        return (
+          goalPickFilter === 'todas' ||
+          (goalPickFilter === 'concluidas' ? isCompleted : !isCompleted)
+        );
+      })
+      .sort((a: any, b: any) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31'));
+  }, [goals, goalPickSearch, goalPickFilter, goalProgressById]);
+
   const clearFilters = () => {
     setSearchTerm('');
     setFilterCategory('Todas');
@@ -2213,6 +2318,14 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
   };
 
   const formatVal = (v) => isPrivate ? "••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  // Tipos explícitos para evitar inferência como `unknown` em alguns cenários do TS
+  const amountNumber = useMemo<number>(() => parseBRL(form.amount), [form.amount]);
+  const distTotal = useMemo<number>(
+    () => (Object.values(form.distributions ?? {}) as unknown[]).reduce<number>((sum, v) => sum + parseBRL(v), 0),
+    [form.distributions]
+  );
+  const distOver = useMemo<boolean>(() => amountNumber > 0 && distTotal > amountNumber, [amountNumber, distTotal]);
+
   const showFilterPanel = showFilters || !!searchTerm || filterCategory !== 'Todas' || filterInstitution !== 'Todas';
 
   return (
@@ -2398,8 +2511,42 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
             </div>
             <div className="pt-6 border-t border-slate-800/60">
               <p className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-[0.2em]">Alocar Metas</p>
+          <div className="space-y-3 mb-4">
+            <div className="relative group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-emerald-500 transition-colors" size={16} />
+              <input
+                type="text"
+                placeholder="Filtrar metas..."
+                className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 pl-11 outline-none focus:border-emerald-500/40 text-xs text-white"
+                value={goalPickSearch}
+                onChange={(e) => setGoalPickSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { k: 'ativas', label: 'Ativas' },
+                { k: 'concluidas', label: 'Concluídas' },
+                { k: 'todas', label: 'Todas' },
+              ].map((it) => (
+                <button
+                  key={it.k}
+                  type="button"
+                  onClick={() => setGoalPickFilter(it.k as any)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all uppercase ${
+                    goalPickFilter === it.k
+                      ? 'bg-emerald-500 border-emerald-500 text-slate-950'
+                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
               <div className="space-y-3 max-h-52 overflow-y-auto pr-2">
-                {goals.map(goal => (
+                {goalsForAllocation.map(goal => (
                   <div key={goal.id} className={`p-4 rounded-2xl border ${form.distributions[goal.id] !== undefined ? 'bg-emerald-500/5 border-emerald-500/40' : 'bg-slate-950/40 border-slate-800'}`}>
                     <div className="flex justify-between items-center">
                       <button
@@ -2413,7 +2560,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                             const suggested = suggestedByGoalId?.[goal.id];
                             // Pré-preenche com a sugestão mensal (se existir) ao vincular a meta
                             d[goal.id] = suggested && Number.isFinite(suggested) && suggested > 0
-                              ? formatBRLInputValue(suggested)
+                              ? formatBRLFromNumber(suggested)
                               : '';
                           }
                           setForm({ ...form, distributions: d });
@@ -2431,12 +2578,25 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                           className="w-32 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-right text-white"
                           placeholder="R$ 0,00"
                           value={form.distributions[goal.id]}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const nextMasked = maskBRL(e.target.value);
+                            const nextNumber = parseBRL(nextMasked);
+
+                            const otherSum = Object.entries(form.distributions || {}).reduce((sum: number, [gid, val]: any) => {
+                              return String(gid) === String(goal.id) ? sum : sum + parseBRL(val);
+                            }, 0);
+
+                            const maxAllowed = Math.max(0, (amountNumber || 0) - otherSum);
+                            const clampedNumber = Math.min(nextNumber, maxAllowed);
+
                             setForm({
                               ...form,
-                              distributions: { ...form.distributions, [goal.id]: maskBRL(e.target.value) },
-                            })
-                          }
+                              distributions: {
+                                ...form.distributions,
+                                [goal.id]: clampedNumber === nextNumber ? nextMasked : formatBRLFromNumber(clampedNumber),
+                              },
+                            });
+                          }}
                         onBlur={(e) => setForm({ ...form, distributions: { ...form.distributions, [goal.id]: formatBRLInputValue(e.target.value) } })}
                         onFocus={(e) => e.currentTarget.select()}
                         />
@@ -2446,8 +2606,19 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                 ))}
               </div>
             </div>
+
+            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+              <span className={`${distOver ? 'text-red-400' : 'text-slate-500'}`}>Total alocado</span>
+              <span className={`${distOver ? 'text-red-400' : 'text-emerald-400'}`}>{formatVal(distTotal)} / {formatVal(amountNumber || 0)}</span>
+            </div>
+            {distOver && (
+              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest text-center">
+                A soma das metas não pode exceder o valor do investimento.
+              </div>
+            )}
+
             <button 
-              disabled={loading || !form.asset || !form.amount} 
+              disabled={loading || !form.asset || !form.amount || distOver} 
               onClick={handleConfirm} 
               className={`w-full font-black p-4 rounded-2xl shadow-xl disabled:opacity-30 uppercase tracking-widest text-xs flex items-center justify-center gap-2 transition-all ${editingId ? 'bg-amber-500 text-slate-950 shadow-amber-500/10' : 'bg-emerald-500 text-slate-950 shadow-emerald-500/10'}`}
             >
@@ -2618,7 +2789,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                     {inv.liquidity === 'No Vencimento' && inv.asset_due_date && (
                        <div className="flex items-center gap-1 text-amber-400/90">
                           <Milestone size={12} />
-                          <span>Venc.: {new Date(inv.asset_due_date).toLocaleDateString()}</span>
+                          <span>Venc.: {formatDateBR(inv.asset_due_date)}</span>
                        </div>
                     )}
                  </div>
