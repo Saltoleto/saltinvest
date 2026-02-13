@@ -6,6 +6,10 @@ import {
   PlusCircle, 
   TrendingUp, 
   Award, 
+  Rocket,
+  Gem,
+  Mountain,
+  Sprout,
   Zap, 
   ShieldCheck, 
   Star, 
@@ -1179,17 +1183,51 @@ export default function App() {
     return { current: currMonth, trend };
   }, [investments]);
 
-  const levelData = useMemo(() => {
+  // XP (mantido como gamificação): 1 XP a cada R$ 10,00 investidos.
+  // Usamos isso para feedback rápido, mas o Rank (Evolução) é baseado no Patrimônio total.
+  const xpLevelData = useMemo(() => {
     const xpPerLevel = 1000;
     const currentLevel = Math.floor(userStats.xp / xpPerLevel) + 1;
     const progress = ((userStats.xp % xpPerLevel) / xpPerLevel) * 100;
-    let title = "Iniciante";
-    if (currentLevel >= 10) title = "Investidor Focado";
-    if (currentLevel >= 25) title = "Estrategista Pleno";
-    if (currentLevel >= 50) title = "Mestre dos Ativos";
-    if (currentLevel >= 100) title = "Magnata SaltInvest";
-    return { currentLevel, progress, nextLevelXp: xpPerLevel - (userStats.xp % xpPerLevel), title };
+    return { currentLevel, progress, nextLevelXp: xpPerLevel - (userStats.xp % xpPerLevel) };
   }, [userStats.xp]);
+
+  // Rank (Evolução) por Patrimônio: faixas de 100 em 100 mil até 1 milhão.
+  const rankData = useMemo(() => {
+    const step = 100_000;
+    const p = Number(totalPatrimony) || 0;
+    const tiers = [
+      { min: 0, max: 99_999, title: 'Sementeiro', icon: Sprout, accent: 'text-emerald-400', hint: 'Começo consciente' },
+      { min: 100_000, max: 199_999, title: 'Pioneiro', icon: Rocket, accent: 'text-blue-400', hint: 'Primeiro salto' },
+      { min: 200_000, max: 299_999, title: 'Construtor', icon: Layers, accent: 'text-slate-300', hint: 'Base sólida' },
+      { min: 300_000, max: 399_999, title: 'Estrategista', icon: Target, accent: 'text-purple-400', hint: 'Plano em ação' },
+      { min: 400_000, max: 499_999, title: 'Alpinista', icon: Mountain, accent: 'text-amber-400', hint: 'Subindo com foco' },
+      { min: 500_000, max: 599_999, title: 'Visionário', icon: TrendingUp, accent: 'text-emerald-400', hint: 'Crescimento consistente' },
+      { min: 600_000, max: 699_999, title: 'Guardião', icon: ShieldCheck, accent: 'text-cyan-400', hint: 'Protege e diversifica' },
+      { min: 700_000, max: 799_999, title: 'Mestre de Carteira', icon: Star, accent: 'text-yellow-400', hint: 'Equilíbrio e disciplina' },
+      { min: 800_000, max: 899_999, title: 'Lenda', icon: Trophy, accent: 'text-yellow-500', hint: 'Performance acima da média' },
+      { min: 900_000, max: 999_999, title: 'Pré-Milhão', icon: Gem, accent: 'text-pink-400', hint: 'Última milha' },
+      { min: 1_000_000, max: Number.POSITIVE_INFINITY, title: 'Ícone do Milhão', icon: Crown, accent: 'text-emerald-500', hint: 'Marco histórico' },
+    ];
+
+    const idx = Math.max(0, Math.min(tiers.length - 1, Math.floor(p / step)));
+    const tier = tiers[idx];
+    const start = tier.min;
+    const end = tier.max === Number.POSITIVE_INFINITY ? Math.max(start + step, p) : tier.max;
+    const denom = Math.max(1, end - start);
+    const progress = tier.max === Number.POSITIVE_INFINITY ? 100 : ((p - start) / denom) * 100;
+    const nextTarget = tier.max === Number.POSITIVE_INFINITY ? null : tier.max + 1;
+    return {
+      currentLevel: idx + 1,
+      title: tier.title,
+      hint: tier.hint,
+      accent: tier.accent,
+      Icon: tier.icon,
+      progress: Math.max(0, Math.min(100, progress)),
+      rangeLabel: tier.max === Number.POSITIVE_INFINITY ? 'R$ 1.000.000+' : `${formatBRLFromNumber(tier.min)} — ${formatBRLFromNumber(tier.max)}`,
+      nextTarget,
+    };
+  }, [totalPatrimony]);
 
   const handleLogout = async () => {
     await supabaseClient.auth.signOut();
@@ -1238,7 +1276,7 @@ export default function App() {
       <main className="max-w-4xl mx-auto p-4 pb-32">
         {activeTab === 'dashboard' && (
           <DashboardView 
-            stats={userStats} level={levelData} total={totalPatrimony} 
+            stats={userStats} level={rankData} xpLevel={xpLevelData} total={totalPatrimony} 
             goals={goals} investments={investments} 
             goalProgress={goalProgress}
             isPrivate={isPrivate} monthStats={monthlyStats}
@@ -1282,7 +1320,7 @@ export default function App() {
           />
         )}
         {activeTab === 'profile' && (
-          <ProfileView stats={userStats} level={levelData} patrimony={totalPatrimony} user={user} onLogout={handleLogout} />
+          <ProfileView stats={userStats} level={rankData} xpLevel={xpLevelData} patrimony={totalPatrimony} user={user} onLogout={handleLogout} />
         )}
       </main>
 
@@ -1310,7 +1348,7 @@ export default function App() {
             </button>
           </div>
           <NavItem active={activeTab === 'allocation'} onClick={() => void navigateTo('allocation')} icon={<PieChart />} label="Config" />
-          <NavItem active={activeTab === 'profile'} onClick={() => void navigateTo('profile')} icon={<Award />} label="Rank" />
+          <NavItem active={activeTab === 'profile'} onClick={() => void navigateTo('profile')} icon={<Award />} label="Evolução" />
         </ul>
       </nav>
     </div>
@@ -1448,7 +1486,7 @@ function PwaNudges({
   );
 }
 
-function DashboardView({ stats, level, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError }) {
+function DashboardView({ stats, level, xpLevel, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError }) {
   const formatVal = (v) => isPrivate ? "••••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
@@ -1475,6 +1513,17 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
   }, [goalProgress]);
 
   const activeGoals = useMemo(() => goalsData.filter((g) => (g.status || '').toLowerCase() !== 'concluída' && (g.status || '').toLowerCase() !== 'concluida'), [goalsData]);
+  // Priorização usada na Home: metas com vencimento mais próximo primeiro; em empate, maior valor faltante.
+  const activeGoalsSorted = useMemo(() => {
+    return [...activeGoals].sort((a: any, b: any) => {
+      const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (ta !== tb) return ta - tb;
+      const ra = Number(a.remaining_amount ?? 0);
+      const rb = Number(b.remaining_amount ?? 0);
+      return rb - ra;
+    });
+  }, [activeGoals]);
   const completedGoals = useMemo(() => goalsData.filter((g) => (g.status || '').toLowerCase().startsWith('conclu')), [goalsData]);
 
   const suggestedMonthly = (remaining: number, dueDate?: string | null) => calcSuggestedMonthly(remaining, dueDate);
@@ -1485,7 +1534,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
   // - Para metas sem vencimento, sugere dividir o restante em 12 meses
   // - Exibe apenas se existir pelo menos 1 meta ativa
   const monthPlan = useMemo(() => {
-    const list = activeGoals
+    const list = activeGoalsSorted
       .filter((g) => (Number(g.remaining_amount) || 0) > 0)
       .map((g) => {
         const remaining = Number(g.remaining_amount) || 0;
@@ -1512,7 +1561,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
     const totalSuggested = items.reduce((acc, it) => acc + (Number(it.monthly) || 0), 0);
     // UI usa monthPlan.total (evita NaN e deixa claro o significado)
     return { items, total: totalSuggested };
-  }, [activeGoals]);
+  }, [activeGoalsSorted]);
   // Cores determinísticas por meta (consistência visual entre cards/planos)
   const goalColor = (goalId: string) => {
     const palette = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#22c55e', '#06b6d4'];
@@ -1563,10 +1612,12 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
           <div className="bg-slate-950/40 rounded-2xl p-4 border border-slate-800/50">
             <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">XP Acumulado</p>
             <p className="text-xl font-black text-emerald-400">{isPrivate ? '••••' : stats.xp.toLocaleString()} <span className="text-[10px] font-bold">XP</span></p>
+            <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mt-1">Nv. XP {xpLevel?.currentLevel ?? 1}</p>
           </div>
           <div className="bg-slate-950/40 rounded-2xl p-4 border border-slate-800/50">
-            <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Nível Atual</p>
-            <p className="text-xl font-black text-white">Nv. {level.currentLevel}</p>
+            <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Rank (Patrimônio)</p>
+            <p className="text-sm font-black text-white truncate">{level.title}</p>
+            <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${level.accent || 'text-slate-400'}`}>Nv. {level.currentLevel} • {level.rangeLabel}</p>
           </div>
         </div>
       </Card>
@@ -1593,13 +1644,13 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
             <Target size={14} className="text-blue-500" /> Metas em foco
           </h3>
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
-            {activeGoals.length} ativas · {completedGoals.length} concluídas
+            {activeGoalsSorted.length} ativas · {completedGoals.length} concluídas
           </span>
         </div>
 
         {/* Card de Ação (a meta que mais precisa de atenção) */}
-        {activeGoals.length > 0 ? (() => {
-          const g = activeGoals[0];
+        {activeGoalsSorted.length > 0 ? (() => {
+          const g = activeGoalsSorted[0];
           const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
           const remaining = Math.max(0, g.remaining_amount || 0);
           const monthly = suggestedMonthly(remaining, g.due_date);
@@ -1725,7 +1776,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
         )}
 
         {/* Timeline (próximas metas por prazo) */}
-        {activeGoals.length > 0 && (
+        {activeGoalsSorted.length > 0 && (
           <Card className="border-slate-800/40 bg-slate-900/20">
             <button
               type="button"
@@ -1744,7 +1795,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
 
             {timelineOpen && (
               <div className="space-y-4 mt-5 animate-in slide-in-from-top-1">
-              {activeGoals.slice(0, 6).map((g, idx) => {
+              {activeGoalsSorted.slice(0, 6).map((g, idx) => {
                 const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
                 const remaining = Math.max(0, g.remaining_amount || 0);
                 const dueLabel = g.due_date ? formatDateBR(g.due_date) : 'Sem prazo';
@@ -1753,7 +1804,7 @@ function DashboardView({ stats, level, total, goals, investments, goalProgress, 
                   <div key={g.goal_id || g.id || idx} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className={`w-3 h-3 rounded-full border ${isOverdue ? 'bg-red-500/20 border-red-500/40' : 'bg-emerald-500/20 border-emerald-500/30'}`} />
-                      {idx < Math.min(5, activeGoals.length - 1) && <div className="w-px flex-1 bg-slate-800/70 my-1" />}
+                      {idx < Math.min(5, activeGoalsSorted.length - 1) && <div className="w-px flex-1 bg-slate-800/70 my-1" />}
                     </div>
                     <div className="flex-1 min-w-0 bg-slate-950/30 border border-slate-800/60 rounded-2xl p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -2990,23 +3041,45 @@ function SettingsView({ allocation, saveAlloc, institutions, onAddInst, onDelete
   );
 }
 
-function ProfileView({ stats, level, patrimony, user, onLogout }) { 
+function ProfileView({ stats, level, xpLevel, patrimony, user, onLogout }) { 
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const RankIcon = level?.Icon || Trophy;
+
+  const rankTiers = useMemo(() => ([
+    { min: 0, max: 99_999, title: 'Sementeiro', Icon: Sprout, hint: 'Começo consciente' },
+    { min: 100_000, max: 199_999, title: 'Pioneiro', Icon: Rocket, hint: 'Primeiro salto' },
+    { min: 200_000, max: 299_999, title: 'Construtor', Icon: Layers, hint: 'Base sólida' },
+    { min: 300_000, max: 399_999, title: 'Estrategista', Icon: Target, hint: 'Plano em ação' },
+    { min: 400_000, max: 499_999, title: 'Alpinista', Icon: Mountain, hint: 'Subindo com foco' },
+    { min: 500_000, max: 599_999, title: 'Visionário', Icon: TrendingUp, hint: 'Crescimento consistente' },
+    { min: 600_000, max: 699_999, title: 'Guardião', Icon: ShieldCheck, hint: 'Protege e diversifica' },
+    { min: 700_000, max: 799_999, title: 'Mestre de Carteira', Icon: Star, hint: 'Equilíbrio e disciplina' },
+    { min: 800_000, max: 899_999, title: 'Lenda', Icon: Trophy, hint: 'Performance acima da média' },
+    { min: 900_000, max: 999_999, title: 'Pré-Milhão', Icon: Gem, hint: 'Última milha' },
+    { min: 1_000_000, max: Number.POSITIVE_INFINITY, title: 'Ícone do Milhão', Icon: Crown, hint: 'Marco histórico' },
+  ]), []);
+
   return (
     <div className="space-y-6 animate-in fade-in pb-10">
       {/* Header do Perfil */}
       <div className="flex flex-col items-center text-center p-10 bg-gradient-to-br from-slate-900 to-slate-950 rounded-[2.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
         <div className="w-28 h-28 bg-slate-800/50 rounded-[2rem] flex items-center justify-center border-4 border-emerald-500/20 mb-6 relative">
-          <Trophy className="text-yellow-500 w-14 h-14" />
+          <RankIcon className="text-yellow-500 w-14 h-14" />
           <div className="absolute -bottom-3 -right-3 bg-emerald-500 text-slate-950 w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm border-4 border-slate-950">
              {level.currentLevel}
           </div>
         </div>
         <h2 className="text-3xl font-black text-white">{level.title}</h2>
-        <p className="text-slate-500 text-[10px] mt-2 uppercase tracking-[0.3em] font-black">Patente SaltInvest</p>
+        <p className="text-slate-500 text-[10px] mt-2 uppercase tracking-[0.3em] font-black">Rank por Patrimônio</p>
+        <p className="text-[11px] text-slate-300/90 mt-3 font-black">{level.rangeLabel}</p>
         <div className="w-full mt-10">
            <ProgressBar progress={level.progress} color="bg-gradient-to-r from-emerald-500 to-teal-500" size="h-3" />
-           <p className="text-[10px] text-slate-500 text-right mt-2 font-bold italic">Progressão: {Math.round(level.progress)}%</p>
+           <p className="text-[10px] text-slate-500 text-right mt-2 font-bold italic">Progressão na faixa: {Math.round(level.progress)}%</p>
+           {level.nextTarget != null && (
+             <p className="text-[10px] text-slate-600 text-center mt-2 font-bold">
+               Próximo marco: <span className="text-slate-300">{formatBRLFromNumber(level.nextTarget)}</span>
+             </p>
+           )}
         </div>
       </div>
 
@@ -3022,38 +3095,82 @@ function ProfileView({ stats, level, patrimony, user, onLogout }) {
            <div className="flex gap-4">
               <div className="shrink-0 w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 font-black text-xs">1</div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                 <span className="font-black text-white uppercase">Ganho de XP:</span> Cada R$ 10,00 investidos geram automaticamente <strong>1 XP</strong> para sua conta. Investir regularmente é a única forma de subir no rank.
+                 <span className="font-black text-white uppercase">Como o Rank funciona:</span> o Rank (Evolução) é calculado pelo <strong>Patrimônio Total</strong> (soma dos investimentos). As faixas sobem de <strong>R$ 100.000 em R$ 100.000</strong> até <strong>R$ 1.000.000</strong>.
               </p>
            </div>
            <div className="flex gap-4">
               <div className="shrink-0 w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 font-black text-xs">2</div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                 <span className="font-black text-white uppercase">Níveis:</span> Cada <strong>1.000 XP</strong> você sobe um nível. Novos níveis desbloqueiam patentes mais prestigiosas.
+                 <span className="font-black text-white uppercase">XP (gamificação):</span> mantemos o XP para feedback rápido. A regra é simples: <strong>1 XP</strong> a cada <strong>R$ 10,00</strong> investidos. Seu nível de XP atual: <strong>{xpLevel?.currentLevel ?? 1}</strong>.
               </p>
            </div>
            <div className="flex gap-4">
               <div className="shrink-0 w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-emerald-500 font-black text-xs">3</div>
               <div className="space-y-2">
-                 <p className="text-[11px] text-slate-300 font-black uppercase text-white">Hierarquia de Patentes:</p>
+                 <p className="text-[11px] text-slate-300 font-black uppercase text-white">Faixas do Rank (Patrimônio):</p>
                  <div className="grid grid-cols-1 gap-1.5">
-                    <div className="flex items-center gap-2 text-[10px] bg-slate-950/40 p-2 rounded-lg border border-slate-800">
-                       <Shield size={12} className="text-slate-500" /> <span className="text-slate-500">Nv. 01-09:</span> <strong>Iniciante</strong>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] bg-slate-950/40 p-2 rounded-lg border border-slate-800">
-                       <Zap size={12} className="text-blue-400" /> <span className="text-slate-500">Nv. 10-24:</span> <strong>Investidor Focado</strong>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] bg-slate-950/40 p-2 rounded-lg border border-slate-800">
-                       <Milestone size={12} className="text-purple-400" /> <span className="text-slate-500">Nv. 25-49:</span> <strong>Estrategista Pleno</strong>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] bg-slate-950/40 p-2 rounded-lg border border-slate-800">
-                       <Star size={12} className="text-yellow-500" /> <span className="text-slate-500">Nv. 50-99:</span> <strong>Mestre dos Ativos</strong>
-                    </div>
-                    <div className="flex items-center gap-2 text-[10px] bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
-                       <Crown size={12} className="text-emerald-500" /> <span className="text-emerald-500">Nv. 100+:</span> <strong>Magnata SaltInvest</strong>
-                    </div>
+                    {rankTiers.map((t, i) => (
+                      <div key={i} className={`flex items-center gap-2 text-[10px] bg-slate-950/40 p-2 rounded-lg border ${level.title === t.title ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-slate-800'}`}>
+                        <t.Icon size={12} className={level.title === t.title ? 'text-emerald-400' : 'text-slate-500'} />
+                        <span className="text-slate-500">{formatBRLFromNumber(t.min)}{t.max === Number.POSITIVE_INFINITY ? '+' : `–${formatBRLFromNumber(t.max)}`}</span>
+                        <strong className={level.title === t.title ? 'text-emerald-300' : 'text-slate-200'}>{t.title}</strong>
+                        <span className="ml-auto text-slate-600 font-black">{t.hint}</span>
+                      </div>
+                    ))}
                  </div>
               </div>
            </div>
+        </div>
+      </Card>
+
+      {/* Guia do SaltInvest */}
+      <Card className="border-slate-800/40 bg-slate-900/20">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-slate-800/60 rounded-xl text-slate-300">
+            <Info size={20} />
+          </div>
+          <h3 className="font-black text-xs uppercase tracking-widest text-slate-300">Guia rápido</h3>
+        </div>
+
+        <div className="space-y-4">
+          <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Objetivo do SaltInvest</p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              O SaltInvest centraliza seus investimentos e transforma suas <strong>metas</strong> em um plano prático: você vê seu patrimônio,
+              acompanha a evolução das metas, recebe recomendações e usa a gamificação (XP/Rank) para manter consistência.
+            </p>
+          </div>
+
+          <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Como priorizamos as metas na Home (Início)</p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Na seção <strong>“Metas em foco”</strong>, a prioridade é: <strong>prazo mais próximo</strong> primeiro.
+              Se duas metas têm o mesmo prazo, entra primeiro a que tem <strong>maior valor faltante</strong>. Metas sem vencimento vão por último.
+              Isso define a <strong>“Próxima ação”</strong> e a ordem da <strong>Timeline</strong>.
+            </p>
+          </div>
+
+          <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">INSIGHTS DO DIA SALTINVEST</p>
+            <p className="text-[11px] text-slate-300 leading-relaxed">
+              Os insights são gerados pela IA com base no seu patrimônio, aportes e metas.
+              A requisição é feita <strong>automaticamente 1 vez por dia</strong>, no <strong>primeiro acesso do dia</strong> (por usuário).
+              Os cards são ordenados por prioridade: <strong>Alerta</strong> → <strong>Dica</strong> → <strong>Oportunidade</strong>.
+            </p>
+          </div>
+
+          <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">O que significa cada card do Início</p>
+            <ul className="space-y-2 text-[11px] text-slate-300 leading-relaxed">
+              <li><strong>Patrimônio Total:</strong> soma dos seus investimentos cadastrados (base do Rank por Patrimônio).</li>
+              <li><strong>XP Acumulado:</strong> gamificação — 1 XP a cada R$ 10,00 investidos (motivação de consistência).</li>
+              <li><strong>Aporte Mensal:</strong> total investido no mês atual e variação vs. mês anterior.</li>
+              <li><strong>Próxima ação:</strong> a meta mais urgente (prazo mais próximo) com sugestão de valor mensal para bater a meta.</li>
+              <li><strong>Plano do Mês:</strong> recomenda até 3 metas com aporte sugerido e distribuição percentual do seu mês.</li>
+              <li><strong>Timeline:</strong> visão das próximas metas (até 6), destacando atrasos e progresso.</li>
+              <li><strong>Insights do Dia:</strong> recomendações automáticas da IA (alertas/dicas/oportunidades).</li>
+            </ul>
+          </div>
         </div>
       </Card>
 
