@@ -50,7 +50,8 @@ import {
   CheckCircle2, 
   BookOpen, 
   Milestone,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Bell
 } from 'lucide-react';
 
 import { supabase, isSupabaseConfigured } from './lib/supabase';
@@ -148,6 +149,83 @@ function parseBRL(value: unknown): number {
   const n = Number(numStr);
   if (!Number.isFinite(n)) return 0;
   return isNegative ? -n : n;
+}
+
+// Normaliza o JSONB `investments.distributions` vindo do Supabase.
+// Motivo: os valores podem vir como number, string com ponto ("155.56"),
+// ou string pt-BR ("155,56" / "R$ 155,56").
+// Também pode vir como JSON serializado (string), dependendo de como foi persistido.
+function normalizeDistributions(raw: unknown): Record<string, number> {
+  if (!raw) return {};
+
+  let obj: any = raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return {};
+    try {
+      obj = JSON.parse(s);
+    } catch {
+      // Não é JSON; não dá pra normalizar com segurança
+      return {};
+    }
+  }
+
+  if (typeof obj !== 'object' || Array.isArray(obj)) return {};
+
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const gid = String(k);
+    const num = parseBRL(v);
+    if (num > 0) out[gid] = (out[gid] || 0) + num;
+  }
+  return out;
+}
+
+// Converte chaves de distribuição para goal_id quando dados legados foram salvos usando o título da meta.
+// Ex.: {"IPVA": 150} => {"<uuid-da-meta>": 150}
+// Mantém as chaves já válidas (uuid) e também tolera variações de caixa/acentos/espaços.
+function remapDistributionsToGoalIds(dist: Record<string, number>, goals: any[]): Record<string, number> {
+  if (!dist || Object.keys(dist).length === 0) return {};
+
+  const byId = new Set((goals || []).map((g: any) => String(g?.id)).filter(Boolean));
+  const normalizeKey = (s: string) =>
+    (s || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const titleToId = new Map<string, string>();
+  for (const g of goals || []) {
+    const t = normalizeKey(String(g?.title || ''));
+    if (t) titleToId.set(t, String(g.id));
+  }
+
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(dist)) {
+    const key = String(k);
+    const num = Number(v) || 0;
+    if (num <= 0) continue;
+
+    // Caso 1: já é um goal_id válido
+    if (byId.has(key)) {
+      out[key] = (out[key] || 0) + num;
+      continue;
+    }
+
+    // Caso 2: dado legado: chave era o título
+    const mapped = titleToId.get(normalizeKey(key));
+    if (mapped) {
+      out[mapped] = (out[mapped] || 0) + num;
+      continue;
+    }
+
+    // Caso 3: chave desconhecida — mantém para não perder dados, mas isolado
+    out[key] = (out[key] || 0) + num;
+  }
+
+  return out;
 }
 
 function maskBRL(input: string): string {
@@ -703,9 +781,9 @@ export default function App() {
   const computeGoalProgressFallback = (gList: any[], invList: any[]) => {
     const invByGoal: Record<string, number> = {};
     for (const inv of invList || []) {
-      const dist = inv?.distributions || {};
+      const dist = normalizeDistributions(inv?.distributions);
       for (const [goalId, val] of Object.entries(dist)) {
-        invByGoal[goalId] = (invByGoal[goalId] || 0) + Number(val || 0);
+        invByGoal[String(goalId)] = (invByGoal[String(goalId)] || 0) + (Number(val) || 0);
       }
     }
 
@@ -776,8 +854,16 @@ export default function App() {
           supabaseClient.from('ai_insights').select('*').eq('user_id', uid).order('created_at', { ascending: false })
         ]);
 
-        setGoals(gData || []);
-        setInvestments(iData || []);
+        const goalsArr = gData || [];
+        const investmentsArr = (iData || []).map((inv: any) => {
+          // Normaliza + remapeia distribuições (compatível com dados legados por título)
+          const normalized = normalizeDistributions(inv?.distributions);
+          const remapped = remapDistributionsToGoalIds(normalized, goalsArr);
+          return { ...inv, distributions: remapped };
+        });
+
+        setGoals(goalsArr);
+        setInvestments(investmentsArr);
         setInstitutions(instData || []);
         setAssetClasses(cData || []);
         
@@ -1011,7 +1097,7 @@ export default function App() {
     if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
     const uid = session.user.id;
 
-    const { error } = await supabaseClient.from('goals').insert([{ ...goalData, user_id: uid }]);
+    const { error } = await supabaseClient.from('goals').insert([{ ...goalData, include_in_plan: (goalData?.include_in_plan ?? true), user_id: uid }]);
     if (error) return { error };
     await fetchData();
     return { error: null };
@@ -1023,6 +1109,23 @@ export default function App() {
     const uid = session.user.id;
 
     const { error } = await supabaseClient.from('goals').update(goalData).eq('id', goalId).eq('user_id', uid);
+    if (error) return { error };
+    await fetchData();
+    return { error: null };
+  };
+
+
+  const handleSetGoalInPlan = async (goalId: string, include: boolean) => {
+    const session = await getSessionOrRedirect();
+    if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
+    const uid = session.user.id;
+
+    const { error } = await supabaseClient
+      .from('goals')
+      .update({ include_in_plan: include })
+      .eq('id', goalId)
+      .eq('user_id', uid);
+
     if (error) return { error };
     await fetchData();
     return { error: null };
@@ -1284,6 +1387,7 @@ export default function App() {
             isAiLoading={isAiLoading}
             onRefreshAi={generateAIInsights}
             aiError={aiError}
+            onSetGoalInPlan={handleSetGoalInPlan}
           />
         )}
         {activeTab === 'goals' && (
@@ -1486,12 +1590,19 @@ function PwaNudges({
   );
 }
 
-function DashboardView({ stats, level, xpLevel, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError }) {
+function DashboardView({ stats, level, xpLevel, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError, onSetGoalInPlan }) {
   const formatVal = (v) => isPrivate ? "••••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
   const [monthPlanOpen, setMonthPlanOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+
+
+  const goalMetaById = useMemo(() => {
+    const m = new Map<string, any>();
+    (goals || []).forEach((g: any) => m.set(String(g.id), g));
+    return m;
+  }, [goals]);
 
   const goalsData = useMemo(() => {
     const list = Array.isArray(goalProgress) && goalProgress.length ? goalProgress : [];
@@ -1499,6 +1610,13 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
     return list
       .map((g) => ({
         ...g,
+        // IMPORTANT:
+        // A view `v_goal_progress` retorna o identificador como `goal_id` (UUID).
+        // Já no fallback local usamos `id`.
+        // Para evitar mismatch em toda a aplicação (Plano do Mês, ordenações, etc.),
+        // padronizamos `id` sempre como o UUID da meta.
+        id: (g as any).goal_id ?? (g as any).id,
+        include_in_plan: (goalMetaById.get(String((g as any).goal_id ?? (g as any).id))?.include_in_plan ?? (g as any).include_in_plan ?? true),
         target: Number(g.target || 0),
         invested_amount: Number((g as any).invested_amount ?? (g as any).invested_total ?? 0),
         progress_percent: Number((g as any).progress_percent ?? 0),
@@ -1528,53 +1646,84 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
   const suggestedMonthly = (remaining: number, dueDate?: string | null) => calcSuggestedMonthly(remaining, dueDate);
 
-  // Plano do mês (UX): sugere até 3 metas mais urgentes e o valor mensal estimado para cumprir no prazo.
+  // Plano do mês (UX): planejamento ANUAL, distribuindo aportes por meta para cumprir no prazo.
   // Regras:
-  // - Ordena metas ativas pela data de vencimento (mais próxima primeiro; sem vencimento vai por último)
-  // - Para metas sem vencimento, sugere dividir o restante em 12 meses
-  // - Exibe apenas se existir pelo menos 1 meta ativa
+  // - Considera TODAS as metas ativas marcadas como "no planejamento mensal" (include_in_plan=true)
+  // - Metas sem vencimento (ou fora do planejamento) ficam na seção "Fora do plano"
+  // - Para cada meta: sugestão = valor restante / meses até o vencimento (mínimo 1)
   const monthPlan = useMemo(() => {
-    const list = activeGoalsSorted
-      .filter((g) => (Number(g.remaining_amount) || 0) > 0)
-      .map((g) => {
+    const included = activeGoalsSorted
+      .filter((g: any) => (Number(g.remaining_amount) || 0) > 0)
+      .filter((g: any) => Boolean(g.include_in_plan))
+      .filter((g: any) => Boolean(g.due_date))
+      .map((g: any) => {
         const remaining = Number(g.remaining_amount) || 0;
-        const sm = suggestedMonthly(remaining, g.due_date);
+        const required = Number((g as any).required_per_month);
+        const sm = Number.isFinite(required) && required > 0 ? required : suggestedMonthly(remaining, g.due_date);
         const monthly = sm != null ? sm : remaining / 12;
-        const horizonLabel = sm != null ? 'prazo' : '12m';
         return {
           id: g.id,
           title: g.title,
           due_date: g.due_date,
           remaining,
           monthly,
-          horizonLabel,
         };
       })
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
         const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
         if (ta !== tb) return ta - tb;
         return b.remaining - a.remaining;
       });
 
-    const items = list.slice(0, 3);
-    const totalSuggested = items.reduce((acc, it) => acc + (Number(it.monthly) || 0), 0);
-    // UI usa monthPlan.total (evita NaN e deixa claro o significado)
-    return { items, total: totalSuggested };
+    const excluded = activeGoalsSorted
+      .filter((g: any) => (Number(g.remaining_amount) || 0) > 0)
+      .filter((g: any) => !g.include_in_plan || !g.due_date)
+      .map((g: any) => ({
+        id: g.id,
+        title: g.title,
+        due_date: g.due_date,
+        include_in_plan: Boolean(g.include_in_plan),
+      }))
+      .sort((a: any, b: any) => {
+        const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+        const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+        if (ta !== tb) return ta - tb;
+        return a.title.localeCompare(b.title);
+      });
+
+    const totalSuggested = included.reduce((acc: number, it: any) => acc + (Number(it.monthly) || 0), 0);
+    return { items: included, excluded, total: totalSuggested };
   }, [activeGoalsSorted]);
-  // Cores determinísticas por meta (consistência visual entre cards/planos)
+  // Cores determinísticas por meta (consistência visual) com contraste maior entre si.
+  // Usamos um par (from/to) para criar um gradiente premium e ajudar a diferenciar barras.
   const goalColor = (goalId: string) => {
-    const palette = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#22c55e', '#06b6d4'];
+    const palette = [
+      { from: '#22c55e', to: '#10b981' }, // green
+      { from: '#60a5fa', to: '#3b82f6' }, // blue
+      { from: '#a78bfa', to: '#8b5cf6' }, // violet
+      { from: '#fbbf24', to: '#f59e0b' }, // amber
+      { from: '#fb7185', to: '#ec4899' }, // rose
+      { from: '#f87171', to: '#ef4444' }, // red
+      { from: '#2dd4bf', to: '#06b6d4' }, // teal/cyan
+      { from: '#c084fc', to: '#a855f7' }, // purple
+    ];
     let h = 0;
     for (let i = 0; i < goalId.length; i++) h = (h * 31 + goalId.charCodeAt(i)) >>> 0;
-    return palette[h % palette.length];
+    const c = palette[h % palette.length];
+    return {
+      ...c,
+      solid: c.from,
+      gradient: `linear-gradient(90deg, ${c.from} 0%, ${c.to} 100%)`,
+    };
   };
 
   const monthPlanColored = useMemo(() => {
     const enriched = (monthPlan.items || []).map((it: any) => {
       const monthlyNum = parseBRL(it.monthly);
       const id = it.id ?? it.goal_id;
-      return { ...it, id, monthlyNum, color: goalColor(String(id)) };
+      const c = goalColor(String(id));
+      return { ...it, id, monthlyNum, color: c.solid, gradient: c.gradient };
     });
 
     const ordered = [...enriched].sort((a, b) => (b.monthlyNum || 0) - (a.monthlyNum || 0));
@@ -1589,11 +1738,102 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
       id: it.id,
       title: it.title,
       color: it.color,
+      gradient: it.gradient,
       pct: it.pct,
     }));
 
     return { ...monthPlan, total, items, segments };
   }, [monthPlan]);
+
+  // Distribuição REAL do mês (aportes -> metas) para mostrar ao usuário quanto foi para cada meta
+  // e se atingiu o objetivo sugerido para aquele mês.
+  const monthPlanActuals = useMemo(() => {
+    const now = new Date();
+    const nowMonth = now.getMonth();
+    const nowYear = now.getFullYear();
+
+    const isInCurrentMonth = (inv: any) => {
+      const raw = inv?.date || inv?.created_at;
+      if (!raw) return false;
+      // 'date' costuma ser YYYY-MM-DD; evitar UTC shift
+      const d = typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)
+        ? parseDateLocal(raw)
+        : new Date(raw);
+      return d.getMonth() === nowMonth && d.getFullYear() === nowYear;
+    };
+
+    const monthInvestments = (investments || []).filter(isInCurrentMonth);
+
+    // Total distribuído para metas (soma das distribuições em todos os aportes do mês)
+    const totalDistributedAllGoals = monthInvestments.reduce((sum: number, inv: any) => {
+      const dist = normalizeDistributions(inv?.distributions);
+      const s = Object.values(dist).reduce((acc: number, v: any) => acc + (Number(v) || 0), 0);
+      return sum + s;
+    }, 0);
+
+    // Mapa goalId -> total distribuído no mês
+    const byGoal: Record<string, number> = {};
+    for (const inv of monthInvestments) {
+      const dist = normalizeDistributions(inv?.distributions);
+      for (const [gid, val] of Object.entries(dist)) {
+        byGoal[String(gid)] = (byGoal[String(gid)] || 0) + (Number(val) || 0);
+      }
+    }
+
+    // Para o Plano do Mês (até 3 metas), calculamos status atingido/faltante
+    const planItems = (monthPlanColored?.items || []).map((it: any) => {
+      const gid = String(it?.id);
+      const suggested = Number(it?.monthlyNum ?? parseBRL(it?.monthly)) || 0;
+      const distributed = Number(byGoal[gid] || 0);
+      const achieved = suggested <= 0 ? false : distributed + 0.0001 >= suggested;
+      const missing = Math.max(0, suggested - distributed);
+      // do aporte do mês, quanto isso representa
+      const pctOfMonthDeposit = (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0;
+      return { ...it, suggested, distributed, achieved, missing, pctOfMonthDeposit };
+    });
+
+    const planDistributedTotal = planItems.reduce((s: number, it: any) => s + (Number(it.distributed) || 0), 0);
+
+    return {
+      totalDistributedAllGoals,
+      byGoal,
+      planItems,
+      planDistributedTotal,
+    };
+  }, [investments, monthPlanColored, monthStats?.current]);
+
+  // Alertas de vencimento (investimentos com "No Vencimento") - janela padrão: 30 dias
+  const upcomingMaturities = useMemo(() => {
+    const now = new Date();
+    const horizon = new Date(now);
+    horizon.setDate(horizon.getDate() + 30);
+
+    const list = (investments || [])
+      .filter((inv: any) => inv?.asset_due_date)
+      .map((inv: any) => {
+        const d = parseDateLocal(inv.asset_due_date);
+        return { inv, time: d.getTime(), date: d };
+      })
+      .filter((x: any) => Number.isFinite(x.time) && x.date >= now && x.date <= horizon)
+      .sort((a: any, b: any) => a.time - b.time)
+      .slice(0, 5)
+      .map((x: any) => x.inv);
+
+    return list;
+  }, [investments]);
+
+  // Liquidez do patrimônio (visão rápida)
+  const liquiditySummary = useMemo(() => {
+    const total = (investments || []).reduce((acc: number, inv: any) => acc + (Number(inv.amount) || 0), 0);
+    const isDaily = (liq?: string) => {
+      const v = String(liq || '').toLowerCase();
+      return v.includes('diária') || v.includes('diaria');
+    };
+    const daily = (investments || []).filter((i: any) => isDaily(i.liquidity)).reduce((acc: number, inv: any) => acc + (Number(inv.amount) || 0), 0);
+    const locked = Math.max(0, total - daily);
+    return { total, daily, locked };
+  }, [investments]);
+
 
 
   return (
@@ -1693,7 +1933,85 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
         {/* Plano do mês (recomendação de aportes por meta) */}
         {monthPlanColored.items.length > 0 && (
-          <Card className="border-emerald-500/10 bg-emerald-500/5">
+          <>
+      <div className="grid md:grid-cols-2 gap-4">
+        <Card className="bg-slate-900/20 border-slate-800/40">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-2xl bg-emerald-500/10 text-emerald-400">
+                <Wallet size={18} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Liquidez do patrimônio</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">Visão rápida: disponível x travado</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-950/30 border border-slate-800/50 rounded-2xl p-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-emerald-400/80">Disponível (Diária)</p>
+              <p className="text-sm font-black text-white mt-1">{formatVal(liquiditySummary.daily)}</p>
+            </div>
+            <div className="bg-slate-950/30 border border-slate-800/50 rounded-2xl p-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-amber-400/80">Travado</p>
+              <p className="text-sm font-black text-white mt-1">{formatVal(liquiditySummary.locked)}</p>
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <ProgressBar
+              progress={liquiditySummary.total > 0 ? (liquiditySummary.daily / liquiditySummary.total) * 100 : 0}
+              color="bg-emerald-500"
+              size="h-2"
+            />
+            <p className="mt-2 text-[10px] text-slate-600">
+              {liquiditySummary.total > 0
+                ? `${Math.round((liquiditySummary.daily / liquiditySummary.total) * 100)}% do patrimônio com liquidez diária.`
+                : 'Sem investimentos registrados.'}
+            </p>
+          </div>
+        </Card>
+
+        <Card className="bg-slate-900/20 border-slate-800/40">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-2xl bg-amber-500/10 text-amber-400">
+                <Bell size={18} />
+              </div>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Próximos vencimentos</p>
+                <p className="text-[10px] text-slate-600 mt-0.5">Investimentos vencendo em até 30 dias</p>
+              </div>
+            </div>
+          </div>
+
+          {upcomingMaturities.length > 0 ? (
+            <div className="space-y-2">
+              {upcomingMaturities.map((inv: any) => (
+                <div key={inv.id} className="flex items-center justify-between gap-3 bg-slate-950/30 border border-slate-800/50 rounded-2xl px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black text-white truncate">{inv.asset}</p>
+                    <p className="text-[10px] text-slate-500">Vence em {formatDateBR(inv.asset_due_date)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[11px] font-black text-white">{formatVal(Number(inv.amount || 0))}</p>
+                  </div>
+                </div>
+              ))}
+              <p className="text-[10px] text-slate-600 mt-1">
+                Dica: verifique a renovação/resgate com antecedência para evitar surpresas.
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 rounded-2xl bg-slate-950/30 border border-slate-800/50 text-[10px] text-slate-600">
+              Nenhum vencimento nos próximos 30 dias.
+            </div>
+          )}
+        </Card>
+      </div>
+
+<Card className="border-emerald-500/10 bg-emerald-500/5">
             <button
               type="button"
               onClick={() => setMonthPlanOpen(v => !v)}
@@ -1704,7 +2022,17 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                   <Target size={14} /> Plano do Mês
                 </h4>
                 {/* removido: etiqueta "colapsável" */}
-              </div>
+              
+<span
+  className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border ${
+    (monthStats.current || 0) > 0
+      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+      : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+  }`}
+>
+  {(monthStats.current || 0) > 0 ? 'Aporte do mês: realizado' : 'Aporte do mês: pendente'}
+</span>
+</div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
 	                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total sugerido</p>
@@ -1718,30 +2046,45 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
             {monthPlanOpen && (
               <div className="mt-5 animate-in fade-in slide-in-from-top-2">
-                {/* Barra empilhada proporcional ao total sugerido */}
-                <div className="space-y-3 mb-6">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Distribuição do mês</p>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">100%</p>
-                  </div>
-	                  <div className="w-full h-3 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40 flex">
-	                    {monthPlanColored.segments.map((seg) => (
-	                      <div
-	                        key={String(seg.id)}
-	                        className="h-full"
-	                        style={{ width: `${seg.pct}%`, backgroundColor: seg.color }}
-	                        title={`${seg.title}: ${seg.pct.toFixed(0)}%`}
-	                      />
-	                    ))}
-	                  </div>
-                </div>
+                
+<div className="mb-5 space-y-3">
+  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Resumo do mês</p>
+  <div className="flex flex-wrap items-center gap-3 text-[11px] font-bold text-slate-300">
+    <span>Você aportou <span className="text-white font-black">{formatVal(monthStats.current || 0)}</span></span>
+    <span>•</span>
+    <span>Distribuído em metas <span className="text-white font-black">{formatVal(monthPlanActuals.totalDistributedAllGoals || 0)}</span></span>
+    {(monthStats.current || 0) > 0 && (monthPlanActuals.totalDistributedAllGoals || 0) < (monthStats.current || 0) ? (
+      <>
+        <span>•</span>
+        <span className="text-amber-400">Não distribuído <span className="text-amber-300 font-black">{formatVal(Math.max(0, (monthStats.current || 0) - (monthPlanActuals.totalDistributedAllGoals || 0)))}</span></span>
+      </>
+    ) : null}
+  </div>
 
-                <div className="space-y-3">
-	                  {monthPlanColored.items.map((it) => {
+  {(() => {
+    const distributedPct = Math.min(
+      100,
+      Math.max(0, ((monthPlanActuals.totalDistributedAllGoals || 0) / (monthStats.current || 1)) * 100)
+    );
+    return (
+      <div className="w-full h-3 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40 flex">
+        <div className="h-full bg-emerald-500" style={{ width: `${distributedPct}%` }} />
+        <div className="h-full bg-amber-500/70" style={{ width: `${Math.max(0, 100 - distributedPct)}%` }} />
+      </div>
+    );
+  })()}
+</div>
+
+<div className="space-y-3">
+
+                  {monthPlanActuals.planItems.map((it: any) => {
 	                    // Percentual correto = participação da sugestão desta meta no Total Sugerido do Mês.
 	                    // (Mantemos o cálculo na própria `monthPlanColored.items` para evitar qualquer mismatch de ids.)
-	                    const pct = typeof it.pct === 'number' ? it.pct : 0;
-	                    const suggested = typeof it.monthly === 'number' ? it.monthly : Number(it.monthly || 0);
+                    const pct = typeof it.pct === 'number' ? it.pct : 0;
+                    const suggested = Number(it.suggested ?? it.monthlyNum ?? parseBRL(it.monthly)) || 0;
+                    const distributed = Number(it.distributed || 0);
+                    const achieved = Boolean(it.achieved);
+                    const missing = Number(it.missing || 0);
                     return (
 	                      <div key={String(it.id)} className="bg-slate-950/40 border border-slate-800/60 rounded-3xl p-4">
                         <div className="flex items-center justify-between">
@@ -1756,23 +2099,105 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                                 <span className="text-slate-600"> • sem vencimento</span>
                               )}
                             </p>
+
+                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
+                                Distribuído no mês: <span className="text-slate-200">{formatVal(distributed)}</span>
+                                {suggested > 0 ? (
+                                  <span className="text-slate-600"> • {Math.min(100, Math.round((distributed / suggested) * 100))}%</span>
+                                ) : null}
+                              </span>
+
+                              {suggested > 0 && achieved ? (
+                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+                                  Objetivo do mês atingido
+                                </span>
+                              ) : suggested > 0 ? (
+                                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-amber-500/10 border-amber-500/20 text-amber-400">
+                                  Falta {formatVal(missing)}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
 	                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{pct.toFixed(0)}%</span>
                         </div>
-                        <div className="mt-3 w-full bg-slate-800/50 rounded-full overflow-hidden border border-slate-700/30" style={{ height: `${Math.round(6 + (Math.min(100, Math.max(0, pct)) / 100) * 10)}px` }}>
-                          <div className="h-full w-full" style={{ backgroundColor: it.color }} />
-                        </div>
+                        {/* Barra: distribuído vs sugerido */}
+                        {suggested > 0 && (
+                          <div className="mt-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Progresso do mês</span>
+	                              <span className={`text-[10px] font-black ${achieved ? 'text-emerald-400' : 'text-amber-400'}`}>{Math.min(100, Math.round((distributed / suggested) * 100))}%</span>
+                            </div>
+                            <div className="w-full h-2 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40">
+	                              <div className={`h-full ${achieved ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, (distributed / suggested) * 100)}%` }} />
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
 
-                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                  
+                  {Array.isArray((monthPlan as any).excluded) && (monthPlan as any).excluded.length > 0 && (
+                    <div className="mt-6 pt-5 border-t border-slate-800/60">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Fora do plano</p>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
+                          {(monthPlan as any).excluded.length}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {(monthPlan as any).excluded.slice(0, 6).map((g: any) => (
+                          <div key={String(g.id)} className="flex items-center justify-between gap-3 bg-slate-950/30 border border-slate-800/60 rounded-2xl px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="text-[11px] font-black text-white truncate">{g.title}</p>
+                              <p className="text-[10px] text-slate-500">
+                                {g.due_date ? `Vence em ${formatDateBR(g.due_date)}` : 'Sem vencimento definido'}
+                              </p>
+                            </div>
+
+                            {!g.include_in_plan ? (
+                              <button
+                                type="button"
+                                onClick={() => onSetGoalInPlan?.(String(g.id), true)}
+                                className="shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/15"
+                              >
+                                Incluir
+                              </button>
+                            ) : !g.due_date ? (
+                              <span className="shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300">
+                                Defina vencimento
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => onSetGoalInPlan?.(String(g.id), false)}
+                                className="shrink-0 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-xl bg-slate-900/40 border border-slate-800/60 text-slate-300 hover:bg-slate-900/60"
+                              >
+                                Remover
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {(monthPlan as any).excluded.length > 6 && (
+                        <p className="mt-3 text-[10px] text-slate-600">
+                          + {(monthPlan as any).excluded.length - 6} outras metas fora do plano.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+<p className="text-[10px] text-slate-500 leading-relaxed">
                     Dica: use o total como referência do seu aporte mensal e distribua conforme as metas mais próximas do prazo.
                   </p>
                 </div>
               </div>
             )}
           </Card>
+          </>
         )}
 
         {/* Timeline (próximas metas por prazo) */}
@@ -1887,7 +2312,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
 
-  const [form, setForm] = useState({ title: '', target: '', due_date: '' });
+  const [form, setForm] = useState({ title: '', target: '', due_date: '', include_in_plan: true });
 
   const [statusFilter, setStatusFilter] = useState<'ativas' | 'concluidas' | 'todas'>('ativas');
 
@@ -1953,6 +2378,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
       title: form.title,
       target: parseBRL(form.target),
       due_date: form.due_date || null,
+      include_in_plan: Boolean((form as any).include_in_plan),
     };
 
     try {
@@ -1965,7 +2391,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
       }
       setEditingId(null);
       setShowAdd(false);
-      setForm({ title: '', target: '', due_date: '' });
+      setForm({ title: '', target: '', due_date: '', include_in_plan: true });
     } catch (err) {
       setError(err?.message || 'Erro ao salvar meta.');
     } finally {
@@ -2143,6 +2569,24 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
               </div>
             </div>
 
+            <div className="flex items-center justify-between bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrar no planejamento mensal</p>
+                <p className="text-[10px] text-slate-600 mt-1">Quando ativo, esta meta entra no Plano do Mês.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, include_in_plan: !(form as any).include_in_plan })}
+                className={`px-4 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                  (form as any).include_in_plan
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                    : 'bg-slate-900/30 border-slate-800 text-slate-400'
+                }`}
+              >
+                {(form as any).include_in_plan ? 'Ativo' : 'Inativo'}
+              </button>
+            </div>
+
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -2156,7 +2600,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
                 onClick={() => {
                   setEditingId(null);
                   setShowAdd(false);
-                  setForm({ title: '', target: '', due_date: '' });
+                  setForm({ title: '', target: '', due_date: '', include_in_plan: true });
                 }}
                 className="bg-slate-800 p-4 rounded-2xl"
               >
@@ -2189,6 +2633,11 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
                           {formatDateBR(goal.due_date)}
                         </span>
                       )}
+                      {(goal as any).include_in_plan === false && (
+                        <span className="text-[9px] font-black uppercase text-amber-300 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                          Fora do plano
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-400 mt-2 font-medium">
                       R$ {current.toLocaleString('pt-BR')} de R${' '}
@@ -2205,6 +2654,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
                           title: goal.title || '',
                           target: formatBRLInputValue(goal.target),
                           due_date: goal.due_date || '',
+                          include_in_plan: (goal as any).include_in_plan ?? true,
                         });
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }}
@@ -2252,10 +2702,9 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
   const [showFilters, setShowFilters] = useState(false);
   const [filterCategory, setFilterCategory] = useState('Todas');
   const [filterInstitution, setFilterInstitution] = useState('Todas');
+  const [filterGoal, setFilterGoal] = useState('Todas');
   // Filtros para seleção de metas ao vincular no investimento (escala bem com muitas metas)
-  const [goalPickSearch, setGoalPickSearch] = useState('');
-  const [goalPickFilter, setGoalPickFilter] = useState<'todas' | 'ativas' | 'concluidas'>('ativas');
-  const [showFgcDetail, setShowFgcDetail] = useState(false);
+  const [goalPickSearch, setGoalPickSearch] = useState('');  const [showFgcDetail, setShowFgcDetail] = useState(false);
   
   const FGC_LIMIT = 250000;
   const liquidityOptions = ['Diária', 'D+1', 'D+2', 'D+3', 'D+30', 'D+60', 'D+90', 'No Vencimento'];
@@ -2329,10 +2778,11 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
       const matchSearch = !q || asset.includes(q) || inst.includes(q);
       const matchCategory = filterCategory === 'Todas' || (inv.category || '') === filterCategory;
       const matchInstitution = filterInstitution === 'Todas' || (inv.institution || '') === filterInstitution;
+      const matchGoal = filterGoal === 'Todas' || Object.prototype.hasOwnProperty.call((inv as any).distributions || {}, filterGoal);
 
-      return matchSearch && matchCategory && matchInstitution;
+      return matchSearch && matchCategory && matchInstitution && matchGoal;
     });
-  }, [investments, searchTerm, filterCategory, filterInstitution]);
+  }, [investments, searchTerm, filterCategory, filterInstitution, filterGoal]);
 
   const goalProgressById = useMemo(() => {
     const m = new Map<string, any>();
@@ -2340,25 +2790,19 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
     return m;
   }, [goalProgress]);
 
-  const goalsForAllocation = useMemo(() => {
-    const q = (goalPickSearch || '').toLowerCase().trim();
-    return goals
-      .filter((g: any) => (g.title || '').toLowerCase().includes(q))
-      .filter((g: any) => {
-        const gp = goalProgressById.get(String(g.id));
-        const isCompleted = Boolean(gp?.is_completed);
-        return (
-          goalPickFilter === 'todas' ||
-          (goalPickFilter === 'concluidas' ? isCompleted : !isCompleted)
-        );
-      })
-      .sort((a: any, b: any) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31'));
-  }, [goals, goalPickSearch, goalPickFilter, goalProgressById]);
+  
+const goalsForAllocation = useMemo(() => {
+  const q = (goalPickSearch || '').toLowerCase().trim();
+  return goals
+    .filter((g: any) => (g.title || '').toLowerCase().includes(q))
+    .sort((a: any, b: any) => (a.due_date || '9999-12-31').localeCompare(b.due_date || '9999-12-31'));
+}, [goals, goalPickSearch]);
 
   const clearFilters = () => {
     setSearchTerm('');
     setFilterCategory('Todas');
     setFilterInstitution('Todas');
+    setFilterGoal('Todas');
   };
 
 
@@ -2413,7 +2857,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
   );
   const distOver = useMemo<boolean>(() => amountNumber > 0 && distTotal > amountNumber, [amountNumber, distTotal]);
 
-  const showFilterPanel = showFilters || !!searchTerm || filterCategory !== 'Todas' || filterInstitution !== 'Todas';
+  const showFilterPanel = showFilters || !!searchTerm || filterCategory !== 'Todas' || filterInstitution !== 'Todas' || filterGoal !== 'Todas';
 
   return (
     <div className="space-y-8 animate-in zoom-in-95 duration-500">
@@ -2609,27 +3053,6 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                 onChange={(e) => setGoalPickSearch(e.target.value)}
               />
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              {[
-                { k: 'ativas', label: 'Ativas' },
-                { k: 'concluidas', label: 'Concluídas' },
-                { k: 'todas', label: 'Todas' },
-              ].map((it) => (
-                <button
-                  key={it.k}
-                  type="button"
-                  onClick={() => setGoalPickFilter(it.k as any)}
-                  className={`px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all uppercase ${
-                    goalPickFilter === it.k
-                      ? 'bg-emerald-500 border-emerald-500 text-slate-950'
-                      : 'bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300'
-                  }`}
-                >
-                  {it.label}
-                </button>
-              ))}
-            </div>
           </div>
 
               <div className="space-y-3 max-h-52 overflow-y-auto pr-2">
@@ -2776,7 +3199,7 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
               <div className="space-y-2">
                 <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
                   Instituição
@@ -2792,7 +3215,26 @@ function InvestView({ onAdd, onUpdate, onDelete, goals, goalProgress, institutio
                       {inst.name}
                     </option>
                   ))}
-                </select>
+                
+<div className="space-y-2">
+  <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest ml-1">
+    Meta
+  </p>
+  <select
+    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-[11px] text-slate-300 outline-none uppercase font-bold"
+    value={filterGoal}
+    onChange={(e) => setFilterGoal(e.target.value)}
+  >
+    <option value="Todas">TODAS</option>
+    {goals.map((g: any) => (
+      <option key={g.id} value={String(g.id)}>
+        {g.title}
+      </option>
+    ))}
+  </select>
+</div>
+
+</select>
               </div>
 
               <button

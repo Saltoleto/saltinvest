@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS public.goals (
   title TEXT NOT NULL,
   target NUMERIC NOT NULL DEFAULT 0,
   due_date DATE,
+  include_in_plan BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -148,6 +149,7 @@ SELECT
   g.title,
   g.target,
   g.due_date,
+  g.include_in_plan,
   g.created_at,
   COALESCE(SUM(d.amount), 0) AS invested_amount,
   GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) AS remaining_amount,
