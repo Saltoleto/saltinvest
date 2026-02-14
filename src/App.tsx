@@ -2023,7 +2023,8 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                     </div>
                   </div>
                 );
-              })              <p className="text-[10px] text-slate-600 mt-1">
+              })}
+              <p className="text-[10px] text-slate-600 mt-1">
                 Dica: verifique a renovação/resgate com antecedência para evitar surpresas.
               </p>
             </div>
@@ -2572,7 +2573,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
           </button>
           <button
             onClick={() => setShowAdd(!showAdd)}
-            className="bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/10"
+            className="bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-2xl text-2xl font-black leading-none shadow-xl shadow-emerald-500/10"
             type="button"
                       aria-label="Nova meta"
             title="Nova meta"
