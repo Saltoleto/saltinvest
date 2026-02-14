@@ -1596,6 +1596,8 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
   // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
   const [monthPlanOpen, setMonthPlanOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [monthPlanShowAll, setMonthPlanShowAll] = useState(false);
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
 
 
   const goalMetaById = useMemo(() => {
@@ -1988,18 +1990,40 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
           {upcomingMaturities.length > 0 ? (
             <div className="space-y-2">
-              {upcomingMaturities.map((inv: any) => (
-                <div key={inv.id} className="flex items-center justify-between gap-3 bg-slate-950/30 border border-slate-800/50 rounded-2xl px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-black text-white truncate">{inv.asset}</p>
-                    <p className="text-[10px] text-slate-500">Vence em {formatDateBR(inv.asset_due_date)}</p>
+              {upcomingMaturities.map((inv: any) => {
+                const due = inv.asset_due_date ? parseDateLocal(inv.asset_due_date) : null;
+                const today = new Date(new Date().toDateString());
+                const daysLeft = due ? Math.ceil((due.getTime() - today.getTime()) / 86400000) : null;
+
+                const badgeClass =
+                  daysLeft != null && daysLeft <= 7
+                    ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                    : daysLeft != null && daysLeft <= 15
+                      ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                      : 'bg-slate-900/40 border-slate-800/60 text-slate-300';
+
+                const badgeLabel =
+                  daysLeft == null ? null : daysLeft <= 0 ? 'Vence hoje' : `${daysLeft}d`;
+
+                return (
+                  <div key={inv.id} className="flex items-center justify-between gap-3 bg-slate-950/30 border border-slate-800/50 rounded-2xl px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-black text-white truncate">{inv.asset}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-[10px] text-slate-500">Vence em {formatDateBR(inv.asset_due_date)}</p>
+                        {badgeLabel && (
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border ${badgeClass}`}>
+                            {badgeLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[11px] font-black text-white">{formatVal(Number(inv.amount || 0))}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[11px] font-black text-white">{formatVal(Number(inv.amount || 0))}</p>
-                  </div>
-                </div>
-              ))}
-              <p className="text-[10px] text-slate-600 mt-1">
+                );
+              })              <p className="text-[10px] text-slate-600 mt-1">
                 Dica: verifique a renovação/resgate com antecedência para evitar surpresas.
               </p>
             </div>
@@ -2023,15 +2047,17 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                 </h4>
                 {/* removido: etiqueta "colapsável" */}
               
-<span
-  className={`text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border ${
+<div
+  className={`h-7 w-7 flex items-center justify-center rounded-xl border ${
     (monthStats.current || 0) > 0
       ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
       : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
   }`}
+  title={(monthStats.current || 0) > 0 ? 'Aporte do mês realizado' : 'Aporte do mês pendente'}
+  aria-label={(monthStats.current || 0) > 0 ? 'Aporte do mês realizado' : 'Aporte do mês pendente'}
 >
-  {(monthStats.current || 0) > 0 ? 'Aporte do mês: realizado' : 'Aporte do mês: pendente'}
-</span>
+  {(monthStats.current || 0) > 0 ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+</div>
 </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
@@ -2077,7 +2103,12 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
 <div className="space-y-3">
 
-                  {monthPlanActuals.planItems.map((it: any) => {
+                                    {(() => {
+                    const planItems = Array.isArray(monthPlanActuals.planItems) ? monthPlanActuals.planItems : [];
+                    const visiblePlanItems = monthPlanShowAll ? planItems : planItems.slice(0, 3);
+                    return (
+                      <>
+                  {visiblePlanItems.map((it: any) => {
 	                    // Percentual correto = participação da sugestão desta meta no Total Sugerido do Mês.
 	                    // (Mantemos o cálculo na própria `monthPlanColored.items` para evitar qualquer mismatch de ids.)
                     const pct = typeof it.pct === 'number' ? it.pct : 0;
@@ -2136,6 +2167,18 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                       </div>
                     );
                   })}
+                        {planItems.length > 3 && (
+                          <button
+                            type="button"
+                            onClick={() => setMonthPlanShowAll(v => !v)}
+                            className="w-full mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white bg-slate-950/30 border border-slate-800/60 rounded-2xl py-2 transition-colors"
+                          >
+                            {monthPlanShowAll ? 'Ver menos' : 'Ver todas (' + planItems.length + ')'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   
                   {Array.isArray((monthPlan as any).excluded) && (monthPlan as any).excluded.length > 0 && (
@@ -2259,6 +2302,16 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
           <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
              <Sparkles size={14} className="text-emerald-500" /> INSIGHTS DO DIA SALTINVEST
           </h3>
+
+          {!isAiLoading && Array.isArray(aiInsights) && aiInsights.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setInsightsExpanded(v => !v)}
+              className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
+            >
+              {insightsExpanded ? 'Ver menos' : `Ver todos (${aiInsights.length})`}
+            </button>
+          )}
         </div>
 
         {aiError && (
@@ -2269,24 +2322,89 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {isAiLoading ? (
-            <div className="col-span-full text-center p-12 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
-              <RefreshCw className="animate-spin text-emerald-500 mx-auto mb-3" size={24} />
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">A processar a sua carteira...</p>
+            <div className="col-span-full p-10 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl">
+              <div className="flex items-center justify-center gap-3">
+                <RefreshCw className="animate-spin text-emerald-500" size={20} />
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">A processar a sua carteira...</p>
+              </div>
+              <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3 opacity-70">
+                <div className="h-20 rounded-2xl bg-slate-950/30 border border-slate-800/50" />
+                <div className="h-20 rounded-2xl bg-slate-950/30 border border-slate-800/50" />
+              </div>
             </div>
-          ) : aiInsights.length > 0 ? (
-            [...aiInsights]
-              .sort((a: any, b: any) => {
+          ) : Array.isArray(aiInsights) && aiInsights.length > 0 ? (
+            (() => {
+              const sorted = [...aiInsights].sort((a: any, b: any) => {
                 const order: Record<string, number> = { 'Alerta': 0, 'Dica': 1, 'Oportunidade': 2 };
                 const oa = order[String(a?.type || '')] ?? 9;
                 const ob = order[String(b?.type || '')] ?? 9;
                 return oa - ob;
-              })
-              .map((insight: any, idx: number) => (
-            <div key={idx} className="bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60 animate-in fade-in slide-in-from-right-2 duration-500 shadow-sm group hover:border-emerald-500/20 transition-all">
-              <p className="text-[9px] font-black uppercase mb-1.5 text-emerald-400 tracking-widest">{insight.type || 'Insight'}</p>
-              <p className="text-xs text-slate-300 leading-relaxed">{insight.text}</p>
-            </div>
-          ))
+              });
+
+              const featured = sorted[0];
+              const rest = sorted.slice(1);
+              const visible = insightsExpanded ? rest : rest.slice(0, 1);
+
+              const metaByType = (t: string) => {
+                if (t === 'Alerta') return { icon: <AlertTriangle size={18} />, cls: 'text-red-300 bg-red-500/10 border-red-500/20', tag: 'ALERTA' };
+                if (t === 'Oportunidade') return { icon: <TrendingUp size={18} />, cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20', tag: 'OPORTUNIDADE' };
+                return { icon: <BookOpen size={18} />, cls: 'text-blue-300 bg-blue-500/10 border-blue-500/20', tag: 'DICA' };
+              };
+
+              const FeaturedCard = ({ insight }: any) => {
+                const t = String(insight?.type || 'Insight');
+                const meta = metaByType(t);
+                return (
+                  <div className="md:col-span-2 bg-slate-900/40 p-5 rounded-3xl border border-slate-800/60 shadow-sm hover:border-emerald-500/20 transition-all">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className={`inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border ${meta.cls}`}>
+                          {meta.icon}
+                          {meta.tag}
+                        </div>
+                        <p className="text-sm text-slate-200 leading-relaxed mt-3">
+                          {insight?.text}
+                        </p>
+                      </div>
+                      <div className="shrink-0 p-3 rounded-2xl bg-slate-950/40 border border-slate-800/60 text-slate-300">
+                        <Sparkles size={18} />
+                      </div>
+                    </div>
+                    <p className="mt-3 text-[10px] text-slate-500">
+                      Dica: aplique este insight no próximo aporte para sentir evolução mais rápido.
+                    </p>
+                  </div>
+                );
+              };
+
+              const SmallCard = ({ insight }: any) => {
+                const t = String(insight?.type || 'Insight');
+                const meta = metaByType(t);
+                return (
+                  <div className="bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60 animate-in fade-in slide-in-from-right-2 duration-500 shadow-sm group hover:border-emerald-500/20 transition-all">
+                    <div className={`inline-flex items-center gap-2 text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border ${meta.cls}`}>
+                      {meta.icon}
+                      {meta.tag}
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed mt-3">{insight?.text}</p>
+                  </div>
+                );
+              };
+
+              return (
+                <>
+                  <FeaturedCard insight={featured} />
+                  {visible.map((insight: any, idx: number) => (
+                    <SmallCard key={idx} insight={insight} />
+                  ))}
+                  {!insightsExpanded && rest.length > 1 && (
+                    <div className="md:col-span-2 text-center text-[10px] text-slate-600">
+                      + {rest.length - 1} outros insights disponíveis.
+                    </div>
+                  )}
+                </>
+              );
+            })()
           ) : (
             <div className="col-span-full text-center p-6 bg-slate-900/20 border border-dashed border-slate-800 rounded-2xl text-slate-600 text-[10px] uppercase font-bold tracking-widest">
               Nenhuma recomendação gerada.
@@ -2456,8 +2574,10 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
             onClick={() => setShowAdd(!showAdd)}
             className="bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-emerald-500/10"
             type="button"
+                      aria-label="Nova meta"
+            title="Nova meta"
           >
-            Nova Meta
+            +
           </button>
         </div>
       </div>
@@ -2571,8 +2691,7 @@ function GoalsView({ goals, investments, goalProgress, onAdd, onUpdate, onDelete
 
             <div className="flex items-center justify-between bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Entrar no planejamento mensal</p>
-                <p className="text-[10px] text-slate-600 mt-1">Quando ativo, esta meta entra no Plano do Mês.</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Plano Mes</p>
               </div>
               <button
                 type="button"
