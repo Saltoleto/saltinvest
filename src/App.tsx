@@ -1946,7 +1946,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
 
   // Timeline na Home deve incluir metas com lançamentos no mês atual, mesmo concluídas.
   const timelineGoalsSorted = useMemo(() => {
-    const base = Array.isArray(activeGoalsSorted) ? activeGoalsSorted : [];
+    const base = (Array.isArray(activeGoalsSorted) ? activeGoalsSorted : []).filter((g: any) => Boolean((g as any)?.include_in_plan));
     const launchedIds = Array.isArray((monthPlanActuals as any)?.launchedGoalIdsThisMonth)
       ? (monthPlanActuals as any).launchedGoalIdsThisMonth
       : [];
@@ -1956,6 +1956,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
       .filter((gid: string) => !baseIds.has(String(gid)))
       .map((gid: string) => (goalsData || []).find((g: any) => String(g?.id) === String(gid)))
       .filter(Boolean)
+      .filter((g: any) => Boolean(g?.include_in_plan))
       .map((g: any) => {
         // Converter para o shape esperado pela Timeline
         const id = String(g?.id);
