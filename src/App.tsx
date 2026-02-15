@@ -1983,18 +1983,30 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
     });
   }, [activeGoalsSorted, monthPlanActuals, goalsData]);
 
-  // Status do TOTAL sugerido vs. aporte realizado no mês
-  // - completo: aportado >= total sugerido
-  // - zero: aportado == 0
-  // - parcial: 0 < aportado < total sugerido
-  const monthPlanSuggestedStatus = useMemo(() => {
-    const suggested = Number(monthPlanColored?.total ?? 0);
-    const current = Number(monthStats?.current || 0);
-    if (suggested <= 0 && current <= 0) return 'zero' as const;
-    if (current <= 0) return 'zero' as const;
-    if (current + 0.0001 >= suggested) return 'complete' as const;
-    return 'partial' as const;
-  }, [monthPlanColored?.total, monthStats?.current]);
+  // Regra (definitiva):
+  // Total sugerido (ainda a distribuir) = Soma(required_per_month das metas do plano)
+  //                                    - Soma(amount em investment_allocations no mês atual para estas metas)
+  // Badge:
+  // - checked: total sugerido <= 0
+  // - warn: total sugerido > 0
+  const monthPlanSuggested = useMemo(() => {
+    const gp = Array.isArray(goalProgress) ? goalProgress : [];
+    const planGoals = gp.filter((g: any) => Boolean(g?.include_in_plan));
+
+    const sumRequired = planGoals.reduce(
+      (acc: number, g: any) => acc + Math.max(0, Number(g?.required_per_month) || 0),
+      0
+    );
+
+    const byGoal = (monthPlanActuals as any)?.byGoal || {};
+    const sumAllocated = planGoals.reduce((acc: number, g: any) => acc + (Number(byGoal[String(g?.id)]) || 0), 0);
+
+    const remainingRaw = sumRequired - sumAllocated;
+    // tolerância para evitar ruído de ponto flutuante
+    const remaining = remainingRaw <= 0.005 ? 0 : remainingRaw;
+    const status = remaining <= 0 ? ('checked' as const) : ('warn' as const);
+    return { remaining, status, sumRequired, sumAllocated };
+  }, [goalProgress, monthPlanActuals]);
 
   // Alertas de vencimento (investimentos com "No Vencimento") - janela padrão: 30 dias
   const upcomingMaturities = useMemo(() => {
@@ -2210,42 +2222,30 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
 	                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total sugerido</p>
 	                    <span
 	                      className={`inline-flex items-center justify-center rounded-lg border h-6 w-6 ${
-	                        monthPlanSuggestedStatus === 'complete'
+	                        monthPlanSuggested.status === 'checked'
 	                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-	                          : monthPlanSuggestedStatus === 'partial'
-	                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-	                            : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+	                          : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
 	                      }`}
-	                      title={
-	                        monthPlanSuggestedStatus === 'complete'
-	                          ? 'Total sugerido do mês: aportado completamente'
-	                          : monthPlanSuggestedStatus === 'partial'
-	                            ? 'Total sugerido do mês: aportado parcialmente'
-	                            : 'Total sugerido do mês: aporte zerado'
-	                      }
-	                      aria-label={
-	                        monthPlanSuggestedStatus === 'complete'
-	                          ? 'Total sugerido do mês: aportado completamente'
-	                          : monthPlanSuggestedStatus === 'partial'
-	                            ? 'Total sugerido do mês: aportado parcialmente'
-	                            : 'Total sugerido do mês: aporte zerado'
-	                      }
+	                    title={
+	                      monthPlanSuggested.status === 'checked'
+	                        ? 'Total sugerido do mês: metas do plano já cobertas (distribuição atingida)'
+	                        : 'Total sugerido do mês: ainda falta distribuir para cobrir o plano'
+	                    }
+	                    aria-label={
+	                      monthPlanSuggested.status === 'checked'
+	                        ? 'Total sugerido do mês: metas do plano já cobertas (distribuição atingida)'
+	                        : 'Total sugerido do mês: ainda falta distribuir para cobrir o plano'
+	                    }
 	                    >
-	                      {monthPlanSuggestedStatus === 'complete' ? (
-	                        <CheckCircle2 size={14} />
-	                      ) : monthPlanSuggestedStatus === 'partial' ? (
-	                        <AlertTriangle size={14} />
-	                      ) : (
-	                        <MinusCircle size={14} />
-	                      )}
+	                      {monthPlanSuggested.status === 'checked' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
 	                    </span>
 	                  </div>
 	                  {/*
 	                    Regra UX (definitiva):
-	                    - "Total Sugerido" deve ser SEMPRE a soma da sugestão base (required_per_month) de cada meta do plano.
-	                    - Ele não deve variar por metas já atingidas no mês (sugestão exibida pode zerar) nem por aportes/distribuições.
+	                    - "Total Sugerido" é o quanto ainda falta distribuir no mês para cobrir o plano.
+	                    - total = Soma(required_per_month das metas do plano) - Soma(amount em investment_allocations no mês atual para estas metas)
 	                  */}
-	                  <p className="text-sm font-black text-white">{formatVal(monthPlanColored.total)}</p>
+	                  <p className="text-sm font-black text-white">{formatVal(Math.max(0, monthPlanSuggested.remaining || 0))}</p>
                 </div>
                 <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/60 text-slate-400">
                   {monthPlanOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -2269,11 +2269,10 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
       </>
     ) : null}
     {(() => {
-      // "Falta para sugerido" deve refletir quanto ainda falta distribuir para cumprir o TOTAL SUGERIDO (base)
-      // no mês, e não quanto falta aportar no mês (o usuário pode aportar e não distribuir, ou vice-versa).
-      const suggestedBase = monthPlanColored.total || 0;
-      const missingToSuggested = Math.max(0, suggestedBase - (monthPlanActuals.totalDistributedAllGoals || 0));
-      if (!suggestedBase || missingToSuggested <= 0) return null;
+      // "Falta para sugerido" deve refletir quanto ainda falta distribuir (no mês) para cobrir o plano,
+      // baseado em required_per_month - allocations do mês.
+      const missingToSuggested = Math.max(0, Number(monthPlanSuggested?.remaining || 0));
+      if (missingToSuggested <= 0) return null;
       return (
         <>
           <span>•</span>
