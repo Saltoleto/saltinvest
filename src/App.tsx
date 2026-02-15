@@ -599,6 +599,8 @@ export default function App() {
   const [goalProgress, setGoalProgress] = useState<any[]>([]);
   const [institutions, setInstitutions] = useState([]);
   const [assetClasses, setAssetClasses] = useState([]);
+  // Fonte de verdade para lançamentos por meta (usado para "Objetivo do mês atingido")
+  const [investmentAllocations, setInvestmentAllocations] = useState<any[]>([]);
   const [allocation, setAllocation] = useState<Record<string, number>>({});
   const [userStats, setUserStats] = useState({ xp: 0, level: 1 });
   const [aiInsights, setAiInsights] = useState([]);
@@ -852,6 +854,7 @@ export default function App() {
           { data: iData }, 
           { data: instData }, 
           { data: cData }, 
+          { data: allocData },
           { data: config },
           { data: insightsData }
         ] = await Promise.all([
@@ -859,6 +862,8 @@ export default function App() {
           supabaseClient.from('investments').select('*').eq('user_id', uid).order('created_at', { ascending: false }),
           supabaseClient.from('institutions').select('*').eq('user_id', uid),
           supabaseClient.from('asset_classes').select('*').eq('user_id', uid),
+          // Alocações associadas aos investimentos (fonte para cálculo mensal por meta)
+          supabaseClient.from('investment_allocations').select('investment_id, goal_id, amount').eq('user_id', uid),
           supabaseClient.from('user_config').select('*').eq('user_id', uid).maybeSingle(),
           supabaseClient.from('ai_insights').select('*').eq('user_id', uid).order('created_at', { ascending: false })
         ]);
@@ -875,6 +880,7 @@ export default function App() {
         setInvestments(investmentsArr);
         setInstitutions(instData || []);
         setAssetClasses(cData || []);
+        setInvestmentAllocations(Array.isArray(allocData) ? allocData : []);
         
         if (config) {
           // Normaliza e poda o allocation para evitar chaves órfãs quando classes são removidas.
@@ -1446,7 +1452,7 @@ export default function App() {
         {activeTab === 'dashboard' && (
           <DashboardView 
             stats={userStats} level={rankData} xpLevel={xpLevelData} total={totalPatrimony} 
-            goals={goals} investments={investments} 
+            goals={goals} investments={investments} investmentAllocations={investmentAllocations}
             goalProgress={goalProgress}
             isPrivate={isPrivate} monthStats={monthlyStats}
             aiInsights={aiInsights}
@@ -1656,11 +1662,12 @@ function PwaNudges({
   );
 }
 
-function DashboardView({ stats, level, xpLevel, total, goals, investments, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError, onSetGoalInPlan }) {
+function DashboardView({ stats, level, xpLevel, total, goals, investments, investmentAllocations, goalProgress, isPrivate, monthStats, aiInsights, isAiLoading, onRefreshAi, aiError, onSetGoalInPlan }) {
   const formatVal = (v) => isPrivate ? "••••••" : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
   const [monthPlanOpen, setMonthPlanOpen] = useState(false);
+  const [upcomingOpen, setUpcomingOpen] = useState(true);
   const [timelineOpen, setTimelineOpen] = useState(false);
   // UX: removidos toggles "Ver todas/Ver menos" na Home para manter leitura direta e consistente.
 
@@ -1829,23 +1836,39 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
       return d.getMonth() === nowMonth && d.getFullYear() === nowYear;
     };
 
+    // Investimentos do mês (usado para filtrar investment_allocations pelo investment_id)
     const monthInvestments = (investments || []).filter(isInCurrentMonth);
+    const monthInvestmentIdSet = new Set(monthInvestments.map((inv: any) => String(inv?.id)).filter(Boolean));
 
-    // Total distribuído para metas (soma das distribuições em todos os aportes do mês)
-    const totalDistributedAllGoals = monthInvestments.reduce((sum: number, inv: any) => {
-      const dist = normalizeDistributions(inv?.distributions);
-      const s = Object.values(dist).reduce((acc: number, v: any) => acc + (Number(v) || 0), 0);
-      return sum + s;
-    }, 0);
+    // Fonte de verdade: investment_allocations (amount) filtrado para o mês atual
+    const allocationsThisMonth = (Array.isArray(investmentAllocations) ? investmentAllocations : [])
+      .filter((a: any) => monthInvestmentIdSet.has(String(a?.investment_id)))
+      .filter((a: any) => (Number(a?.amount) || 0) > 0);
 
-    // Mapa goalId -> total distribuído no mês
+    // Total distribuído para metas no mês (soma de amount em investment_allocations)
+    const totalDistributedAllGoals = allocationsThisMonth.reduce((sum: number, a: any) => sum + (Number(a?.amount) || 0), 0);
+
+    // Mapa goalId -> total distribuído no mês (via investment_allocations)
     const byGoal: Record<string, number> = {};
-    for (const inv of monthInvestments) {
-      const dist = normalizeDistributions(inv?.distributions);
-      for (const [gid, val] of Object.entries(dist)) {
-        byGoal[String(gid)] = (byGoal[String(gid)] || 0) + (Number(val) || 0);
-      }
+    for (const a of allocationsThisMonth) {
+      const gid = String(a?.goal_id);
+      if (!gid) continue;
+      byGoal[gid] = (byGoal[gid] || 0) + (Number(a?.amount) || 0);
     }
+
+    // Mapa goalId -> required_per_month (via view v_goal_progress)
+    const requiredByGoal: Record<string, number> = {};
+    for (const pg of (Array.isArray(goalProgress) ? goalProgress : [])) {
+      const gid = String((pg as any)?.goal_id ?? (pg as any)?.id ?? '');
+      if (!gid) continue;
+      requiredByGoal[gid] = Number((pg as any)?.required_per_month) || 0;
+    }
+
+    // Metas que tiveram lançamentos (distribuições) no mês atual — independente de status.
+    // Usado para exibir na Home (Plano do Mês e Timeline) mesmo se a meta estiver concluída.
+    const launchedGoalIdsThisMonth = Object.entries(byGoal)
+      .filter(([, v]) => (Number(v) || 0) > 0)
+      .map(([gid]) => String(gid));
 
     // Para o Plano do Mês, calculamos status atingido/faltante e também um "sugerido efetivo".
     // Regra UX: se a meta já atingiu o objetivo do mês corrente, o sugerido do mês deve aparecer zerado
@@ -1854,27 +1877,111 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
       const gid = String(it?.id);
       const suggestedBase = Number(it?.monthlyNum ?? parseBRL(it?.monthly)) || 0;
       const distributed = Number(byGoal[gid] || 0);
-      const achieved = suggestedBase <= 0 ? false : distributed + 0.0001 >= suggestedBase;
-      const missing = Math.max(0, suggestedBase - distributed);
+      const required = Number(requiredByGoal[gid] || 0);
+      // ✅ NOVA REGRA (única fonte):
+      // Se o amount do mês atual (investment_allocations) >= required_per_month (v_goal_progress)
+      // então a meta está com "Objetivo do mês atingido".
+      // Regra estrita (conforme requisito): marcar como atingido quando
+      // SUM(amount) do mês atual em investment_allocations >= required_per_month (v_goal_progress)
+      // Mesmo que required_per_month seja 0 (ex.: meta já concluída e a view evita divisão por zero).
+      const achieved = (distributed + 0.0001) >= required;
+      const missing = Math.max(0, (required || 0) - distributed);
+      // Mantém regra UX do sugerido: quando atingir o objetivo do mês (por required_per_month), sugerido vira 0.
       const suggestedEffective = achieved ? 0 : suggestedBase;
       // do aporte do mês, quanto isso representa
       const pctOfMonthDeposit = (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0;
-      return { ...it, suggestedBase, suggestedEffective, distributed, achieved, missing, pctOfMonthDeposit };
+      return { ...it, suggestedBase, suggestedEffective, distributed, requiredPerMonth: required, achieved, missing, pctOfMonthDeposit };
     });
+
+    // 🔥 Requisito: no Plano do Mês, mostrar também metas com lançamentos no mês atual,
+    // mesmo que estejam concluídas ou fora do plano.
+    // Essas metas entram como itens informativos (sugerido = 0), mas exibem o distribuído no mês.
+    const planIdSet = new Set(planItems.map((p: any) => String(p?.id)));
+    const extraItems = launchedGoalIdsThisMonth
+      .filter((gid) => !planIdSet.has(String(gid)))
+      .map((gid) => {
+        const g = (goalsData || []).find((x: any) => String((x as any)?.id) === String(gid));
+        const title = String(g?.title || 'Meta');
+        const due_date = (g as any)?.due_date ?? null;
+        const status = (g as any)?.status ?? null;
+        const distributed = Number(byGoal[String(gid)] || 0);
+        const required = Number(requiredByGoal[String(gid)] || 0);
+        return {
+          id: gid,
+          title,
+          due_date,
+          status,
+          // itens informativos: não fazem parte do "total sugerido" nem exibem barra de progresso do mês
+          pct: 0,
+          monthlyNum: 0,
+          monthly: 0,
+          suggestedBase: 0,
+          suggestedEffective: 0,
+          distributed,
+          requiredPerMonth: required,
+          achieved: (distributed + 0.0001) >= required,
+          missing: Math.max(0, (required || 0) - distributed),
+          pctOfMonthDeposit: (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0,
+        };
+      })
+      // ordenar por maior distribuído (relevância no mês)
+      .sort((a: any, b: any) => (Number(b.distributed) || 0) - (Number(a.distributed) || 0));
+
+    const planItemsWithLaunched = [...planItems, ...extraItems];
 
     // Total sugerido efetivo do mês (metas já atingidas não entram neste mês)
     const totalSuggestedEffective = planItems.reduce((s: number, it: any) => s + (Number(it?.suggestedEffective) || 0), 0);
 
-    const planDistributedTotal = planItems.reduce((s: number, it: any) => s + (Number(it.distributed) || 0), 0);
+    const planDistributedTotal = planItemsWithLaunched.reduce((s: number, it: any) => s + (Number(it.distributed) || 0), 0);
 
     return {
       totalDistributedAllGoals,
       byGoal,
-      planItems,
+      planItems: planItemsWithLaunched,
+      launchedGoalIdsThisMonth,
       planDistributedTotal,
       totalSuggestedEffective,
     };
-  }, [investments, monthPlanColored, monthStats?.current]);
+  }, [investments, investmentAllocations, goalProgress, monthPlanColored, monthStats?.current, goalsData]);
+
+  // Timeline na Home deve incluir metas com lançamentos no mês atual, mesmo concluídas.
+  const timelineGoalsSorted = useMemo(() => {
+    const base = Array.isArray(activeGoalsSorted) ? activeGoalsSorted : [];
+    const launchedIds = Array.isArray((monthPlanActuals as any)?.launchedGoalIdsThisMonth)
+      ? (monthPlanActuals as any).launchedGoalIdsThisMonth
+      : [];
+    const baseIds = new Set(base.map((g: any) => String(g?.id ?? g?.goal_id)));
+
+    const extras = launchedIds
+      .filter((gid: string) => !baseIds.has(String(gid)))
+      .map((gid: string) => (goalsData || []).find((g: any) => String(g?.id) === String(gid)))
+      .filter(Boolean)
+      .map((g: any) => {
+        // Converter para o shape esperado pela Timeline
+        const id = String(g?.id);
+        return {
+          ...g,
+          id,
+          title: g?.title,
+          due_date: g?.due_date,
+          status: g?.status,
+          // defaults seguros para Timeline
+          progress_percent: Number(g?.progress_percent ?? 100),
+          remaining_amount: Number(g?.remaining_amount ?? 0),
+        };
+      });
+
+    const merged = [...base, ...extras];
+    // Mesma ordenação (prazo mais próximo; empate: maior faltante)
+    return merged.sort((a: any, b: any) => {
+      const ta = a.due_date ? parseDateLocal(a.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.due_date ? parseDateLocal(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      if (ta !== tb) return ta - tb;
+      const ra = Number(a.remaining_amount ?? 0);
+      const rb = Number(b.remaining_amount ?? 0);
+      return rb - ra;
+    });
+  }, [activeGoalsSorted, monthPlanActuals, goalsData]);
 
   // Status do TOTAL sugerido vs. aporte realizado no mês
   // - completo: aportado >= total sugerido
@@ -1935,7 +2042,18 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
              <Wallet size={24} />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-slate-950/40 rounded-2xl p-4 border border-slate-800/50">
+            <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">Aporte Mensal</p>
+            <p className="text-xl font-black text-white mt-0.5">{formatVal(monthStats.current)}</p>
+            <div className="mt-2 flex items-center justify-between">
+              <div className={`flex items-center gap-1 font-black text-[11px] ${monthStats.trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {monthStats.trend >= 0 ? <ArrowUp size={14} /> : <ArrowDownRight size={14} />}
+                {Math.abs(Math.round(monthStats.trend))}%
+              </div>
+              <span className="text-[9px] text-slate-600 font-black uppercase tracking-widest">evolução</span>
+            </div>
+          </div>
           <div className="bg-slate-950/40 rounded-2xl p-4 border border-slate-800/50">
             <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest mb-1">XP Acumulado</p>
             <p className="text-xl font-black text-emerald-400">{isPrivate ? '••••' : stats.xp.toLocaleString()} <span className="text-[10px] font-bold">XP</span></p>
@@ -1949,76 +2067,8 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="py-5 flex items-center justify-between border-slate-800/40 shadow-lg">
-          <div>
-            <p className="text-[9px] uppercase text-slate-500 font-black tracking-widest">Aporte Mensal</p>
-            <p className="text-2xl font-black text-white mt-1">{formatVal(monthStats.current)}</p>
-          </div>
-          <div className="text-right">
-             <div className={`flex items-center gap-1 font-black text-xs ${monthStats.trend >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {monthStats.trend >= 0 ? <ArrowUp size={16} /> : <ArrowDownRight size={16} />}
-                {Math.abs(Math.round(monthStats.trend))}%
-             </div>
-             <p className="text-[9px] text-slate-500 font-bold uppercase mt-1">evolução</p>
-          </div>
-        </Card>
-      </div>
-
       <section className="space-y-4">
-        <div className="flex items-center justify-between ml-1">
-          <h3 className="font-black text-[11px] uppercase text-slate-500 tracking-[0.2em] flex items-center gap-2">
-            <Target size={14} className="text-blue-500" /> Metas em foco
-          </h3>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">
-            {activeGoalsSorted.length} ativas · {completedGoals.length} concluídas
-          </span>
-        </div>
-
-        {/* Card de Ação (a meta que mais precisa de atenção) */}
-        {activeGoalsSorted.length > 0 ? (() => {
-          const g = activeGoalsSorted[0];
-          const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
-          const remaining = Math.max(0, g.remaining_amount || 0);
-          const monthly = suggestedMonthly(remaining, g.due_date);
-          return (
-            <Card className="border-blue-500/20 bg-gradient-to-br from-slate-900/50 to-blue-500/5">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-blue-400">Próxima ação</p>
-                  <h4 className="text-base font-black text-white truncate mt-1">{g.title}</h4>
-                  <div className="flex flex-wrap items-center gap-2 mt-2">
-                    <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
-                      <Calendar size={12} className="inline mr-1" /> {g.due_date ? formatDateBR(g.due_date) : 'Sem prazo'}
-                    </span>
-                    <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
-                      Falta {formatVal(remaining)}
-                    </span>
-                    {monthly !== null && remaining > 0 && (
-                      <span className="text-[10px] font-black text-emerald-400 uppercase bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-xl">
-                        Sugestão: {formatVal(monthly)}/mês
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="shrink-0 bg-blue-500/10 text-blue-400 p-3 rounded-2xl border border-blue-500/20">
-                  <Milestone size={20} />
-                </div>
-              </div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Progresso</span>
-                <span className="text-[11px] font-black text-blue-400">{Math.round(prog)}%</span>
-              </div>
-              <ProgressBar progress={prog} color={prog >= 100 ? "bg-emerald-500" : "bg-blue-500"} />
-            </Card>
-          );
-        })() : (
-          <div className="text-center p-10 bg-slate-900/20 border border-dashed border-slate-800 rounded-3xl text-slate-500 text-[10px] uppercase font-bold tracking-widest">
-            Cadastre uma meta para começar o planejamento.
-          </div>
-        )}
-
-        {/* Plano do mês (recomendação de aportes por meta) */}
+{/* Plano do mês (recomendação de aportes por meta) */}
         {monthPlanColored.items.length > 0 && (
           <>
       <div className="grid md:grid-cols-2 gap-4">
@@ -2071,9 +2121,18 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                 <p className="text-[10px] text-slate-600 mt-0.5">Investimentos vencendo em até 30 dias</p>
               </div>
             </div>
+            <button
+              onClick={() => setUpcomingOpen(v => !v)}
+              className="p-2 rounded-2xl border border-slate-800/60 bg-slate-950/20 hover:bg-slate-950/40 transition"
+              aria-label={upcomingOpen ? 'Recolher próximos vencimentos' : 'Expandir próximos vencimentos'}
+              title={upcomingOpen ? 'Recolher' : 'Expandir'}
+              type="button"
+            >
+              {upcomingOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+            </button>
           </div>
 
-          {upcomingMaturities.length > 0 ? (
+          {upcomingOpen && (upcomingMaturities.length > 0 ? (
             <div className="space-y-2">
               {upcomingMaturities.map((inv: any) => {
                 const due = inv.asset_due_date ? parseDateLocal(inv.asset_due_date) : null;
@@ -2117,7 +2176,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
             <div className="p-4 rounded-2xl bg-slate-950/30 border border-slate-800/50 text-[10px] text-slate-600">
               Nenhum vencimento nos próximos 30 dias.
             </div>
-          )}
+          ))}
         </Card>
       </div>
 
@@ -2255,6 +2314,18 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                     const distributed = Number(it.distributed || 0);
                     const achieved = Boolean(it.achieved);
                     const missing = Number(it.missing || 0);
+                    const requiredPerMonth = Number((it as any).requiredPerMonth || 0);
+                    const targetBase = requiredPerMonth > 0 ? requiredPerMonth : suggestedBase;
+                    // Progresso mensal: quando `required_per_month` é 0 (ex.: meta já concluída e a view zera o campo),
+                    // ainda assim queremos refletir o atingimento no mês.
+                    // Regra: se não há alvo mensal (>0), mas houve aporte no mês ou a regra de atingimento foi satisfeita,
+                    // exibimos 100% para não esconder a barra.
+                    const progressPct =
+                      targetBase > 0
+                        ? Math.min(100, Math.round((distributed / targetBase) * 100))
+                        : achieved || distributed > 0
+                          ? 100
+                          : 0;
                     return (
 	                      <div key={String(it.id)} className="bg-slate-950/40 border border-slate-800/60 rounded-3xl p-4">
                         <div className="flex items-center justify-between">
@@ -2273,16 +2344,16 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
 								Distribuído no mês: <span className="text-slate-200">{formatVal(distributed)}</span>
-								{suggestedBase > 0 ? (
-								  <span className="text-slate-600"> • {Math.min(100, Math.round((distributed / suggestedBase) * 100))}%</span>
+						{(targetBase > 0 || achieved || distributed > 0) ? (
+						  <span className="text-slate-600"> • {progressPct}%</span>
                                 ) : null}
                               </span>
 
-                              {suggestedBase > 0 && achieved ? (
+							{achieved ? (
                                 <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
                                   Objetivo do mês atingido
                                 </span>
-                              ) : suggestedBase > 0 ? (
+							) : targetBase > 0 ? (
                                 <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-amber-500/10 border-amber-500/20 text-amber-400">
                                   Falta {formatVal(missing)}
                                 </span>
@@ -2291,15 +2362,15 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                           </div>
 	                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{pct.toFixed(0)}%</span>
                         </div>
-                        {/* Barra: distribuído vs sugerido */}
-                        {suggestedBase > 0 && (
+						{/* Barra: distribuído vs objetivo mensal (required_per_month) */}
+						{(targetBase > 0 || achieved || distributed > 0) && (
                           <div className="mt-3">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Progresso do mês</span>
-	                              <span className={`text-[10px] font-black ${achieved ? 'text-emerald-400' : 'text-amber-400'}`}>{Math.min(100, Math.round((distributed / suggestedBase) * 100))}%</span>
+							  <span className={`text-[10px] font-black ${achieved ? 'text-emerald-400' : 'text-amber-400'}`}>{progressPct}%</span>
                             </div>
                             <div className="w-full h-2 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40">
-	                              <div className={`h-full ${achieved ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, (distributed / suggestedBase) * 100)}%` }} />
+							  <div className={`h-full ${achieved ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${progressPct}%` }} />
                             </div>
                           </div>
                         )}
@@ -2374,7 +2445,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
         )}
 
         {/* Timeline (próximas metas por prazo) */}
-        {activeGoalsSorted.length > 0 && (
+        {timelineGoalsSorted.length > 0 && (
           <Card className="border-slate-800/40 bg-slate-900/20">
             <button
               type="button"
@@ -2393,7 +2464,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
             {timelineOpen && (
               <div className="space-y-4 mt-5 animate-in slide-in-from-top-1">
-              {activeGoalsSorted.slice(0, 6).map((g, idx) => {
+              {timelineGoalsSorted.slice(0, 6).map((g, idx) => {
                 const prog = Math.min(100, Math.max(0, g.progress_percent || 0));
                 const remaining = Math.max(0, g.remaining_amount || 0);
                 const dueLabel = g.due_date ? formatDateBR(g.due_date) : 'Sem prazo';
@@ -2402,7 +2473,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                   <div key={g.goal_id || g.id || idx} className="flex gap-3">
                     <div className="flex flex-col items-center">
                       <div className={`w-3 h-3 rounded-full border ${isOverdue ? 'bg-red-500/20 border-red-500/40' : 'bg-emerald-500/20 border-emerald-500/30'}`} />
-                      {idx < Math.min(5, activeGoalsSorted.length - 1) && <div className="w-px flex-1 bg-slate-800/70 my-1" />}
+                      {idx < Math.min(5, timelineGoalsSorted.length - 1) && <div className="w-px flex-1 bg-slate-800/70 my-1" />}
                     </div>
                     <div className="flex-1 min-w-0 bg-slate-950/30 border border-slate-800/60 rounded-2xl p-4">
                       <div className="flex items-start justify-between gap-3">
@@ -3819,16 +3890,6 @@ function ProfileView({ stats, level, xpLevel, patrimony, user, onLogout }) {
               acompanha a evolução das metas, recebe recomendações e usa a gamificação (XP/Rank) para manter consistência.
             </p>
           </div>
-
-          <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">Como priorizamos as metas na Home (Início)</p>
-            <p className="text-[11px] text-slate-300 leading-relaxed">
-              Na seção <strong>“Metas em foco”</strong>, a prioridade é: <strong>prazo mais próximo</strong> primeiro.
-              Se duas metas têm o mesmo prazo, entra primeiro a que tem <strong>maior valor faltante</strong>. Metas sem vencimento vão por último.
-              Isso define a <strong>“Próxima ação”</strong> e a ordem da <strong>Timeline</strong>.
-            </p>
-          </div>
-
           <div className="bg-slate-950/30 border border-slate-800/60 rounded-3xl p-5">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2">INSIGHTS DO DIA SALTINVEST</p>
             <p className="text-[11px] text-slate-300 leading-relaxed">
@@ -3844,7 +3905,6 @@ function ProfileView({ stats, level, xpLevel, patrimony, user, onLogout }) {
               <li><strong>Patrimônio Total:</strong> soma dos seus investimentos cadastrados (base do Rank por Patrimônio).</li>
               <li><strong>XP Acumulado:</strong> gamificação — 1 XP a cada R$ 10,00 investidos (motivação de consistência).</li>
               <li><strong>Aporte Mensal:</strong> total investido no mês atual e variação vs. mês anterior.</li>
-              <li><strong>Próxima ação:</strong> a meta mais urgente (prazo mais próximo) com sugestão de valor mensal para bater a meta.</li>
               <li><strong>Plano do Mês:</strong> recomenda até 3 metas com aporte sugerido e distribuição percentual do seu mês.</li>
               <li><strong>Timeline:</strong> visão das próximas metas (até 6), destacando atrasos e progresso.</li>
               <li><strong>Insights do Dia:</strong> recomendações automáticas da IA (alertas/dicas/oportunidades).</li>
