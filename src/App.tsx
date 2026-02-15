@@ -38,6 +38,7 @@ import {
   Wallet, 
   LogOut, 
   Mail, 
+  MinusCircle,
   Lock, 
   ArrowRight, 
   ChevronLeft, 
@@ -420,11 +421,19 @@ function AuthView() {
       } else if (mode === 'register') {
         const { error } = await supabaseClient.auth.signUp({ email, password });
         if (error) throw error;
-        setMessage({ text: 'Conta criada! Verifique o seu e-mail para confirmar.', type: 'success' });
+        // Após criar conta, redireciona para login (UX: fluxo fechado e claro)
+        setMode('login');
+        setPassword('');
+        setShowPassword(false);
+        setMessage({ text: 'Conta criada! Verifique seu e-mail para confirmar e faça login.', type: 'success' });
       } else if (mode === 'recovery') {
         const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
         if (error) throw error;
-        setMessage({ text: 'E-mail de recuperação enviado!', type: 'success' });
+        // Após solicitar recuperação, volta para login (UX)
+        setMode('login');
+        setPassword('');
+        setShowPassword(false);
+        setMessage({ text: 'E-mail de recuperação enviado! Verifique sua caixa de entrada e depois faça login.', type: 'success' });
       }
     } catch (err) {
       setMessage({ text: err.message, type: 'error' });
@@ -1147,8 +1156,37 @@ export default function App() {
     if (!session) return { error: { message: 'Sessão expirada. Faça login novamente.' } };
     const uid = session.user.id;
 
-    const { error } = await supabaseClient.from('investments').insert([{ ...investmentData, user_id: uid }]);
+    // 1) Insere o investimento e captura o id (precisamos dele para gravar as alocações)
+    const { data: inserted, error } = await supabaseClient
+      .from('investments')
+      .insert([{ ...investmentData, user_id: uid }])
+      .select('id')
+      .single();
     if (error) return { error };
+
+    // 2) Grava a tabela associativa investment_allocations a partir do JSONB distributions
+    //    (mantemos distributions no investments por retrocompatibilidade / leitura rápida)
+    const invId = (inserted as any)?.id as string | undefined;
+    const dist = (investmentData?.distributions && typeof investmentData.distributions === 'object')
+      ? investmentData.distributions
+      : {};
+    if (invId) {
+      const rows = Object.entries(dist)
+        .map(([goalId, v]: any) => ({
+          user_id: uid,
+          investment_id: invId,
+          goal_id: goalId,
+          amount: Number(v) || 0,
+        }))
+        .filter((r) => !!r.goal_id && (Number(r.amount) || 0) > 0);
+
+      if (rows.length > 0) {
+        const { error: allocErr } = await supabaseClient
+          .from('investment_allocations')
+          .insert(rows);
+        if (allocErr) return { error: allocErr };
+      }
+    }
 
     const amount = Number(investmentData.amount) || 0;
     const nxp = userStats.xp + Math.floor(amount / 10);
@@ -1165,6 +1203,34 @@ export default function App() {
 
     const { error } = await supabaseClient.from('investments').update(investmentData).eq('id', investmentId).eq('user_id', uid);
     if (error) return { error };
+
+    // Atualiza allocations: remove as antigas e insere as novas (idempotente)
+    // Obs.: a FK com ON DELETE CASCADE já cobre o delete do investimento,
+    // mas no update precisamos sincronizar as alocações.
+    const { error: delAllocErr } = await supabaseClient
+      .from('investment_allocations')
+      .delete()
+      .eq('investment_id', investmentId)
+      .eq('user_id', uid);
+    if (delAllocErr) return { error: delAllocErr };
+
+    const dist = (investmentData?.distributions && typeof investmentData.distributions === 'object')
+      ? investmentData.distributions
+      : {};
+    const rows = Object.entries(dist)
+      .map(([goalId, v]: any) => ({
+        user_id: uid,
+        investment_id: investmentId,
+        goal_id: goalId,
+        amount: Number(v) || 0,
+      }))
+      .filter((r) => !!r.goal_id && (Number(r.amount) || 0) > 0);
+    if (rows.length > 0) {
+      const { error: allocErr } = await supabaseClient
+        .from('investment_allocations')
+        .insert(rows);
+      if (allocErr) return { error: allocErr };
+    }
     await fetchData();
     return { error: null };
   };
@@ -1596,8 +1662,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
   // Colapsáveis por padrão (reduz ruído e aumenta foco no essencial)
   const [monthPlanOpen, setMonthPlanOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
-  const [monthPlanShowAll, setMonthPlanShowAll] = useState(false);
-  const [insightsExpanded, setInsightsExpanded] = useState(false);
+  // UX: removidos toggles "Ver todas/Ver menos" na Home para manter leitura direta e consistente.
 
 
   const goalMetaById = useMemo(() => {
@@ -1782,17 +1847,23 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
       }
     }
 
-    // Para o Plano do Mês (até 3 metas), calculamos status atingido/faltante
+    // Para o Plano do Mês, calculamos status atingido/faltante e também um "sugerido efetivo".
+    // Regra UX: se a meta já atingiu o objetivo do mês corrente, o sugerido do mês deve aparecer zerado
+    // (será recalculado no próximo mês).
     const planItems = (monthPlanColored?.items || []).map((it: any) => {
       const gid = String(it?.id);
-      const suggested = Number(it?.monthlyNum ?? parseBRL(it?.monthly)) || 0;
+      const suggestedBase = Number(it?.monthlyNum ?? parseBRL(it?.monthly)) || 0;
       const distributed = Number(byGoal[gid] || 0);
-      const achieved = suggested <= 0 ? false : distributed + 0.0001 >= suggested;
-      const missing = Math.max(0, suggested - distributed);
+      const achieved = suggestedBase <= 0 ? false : distributed + 0.0001 >= suggestedBase;
+      const missing = Math.max(0, suggestedBase - distributed);
+      const suggestedEffective = achieved ? 0 : suggestedBase;
       // do aporte do mês, quanto isso representa
       const pctOfMonthDeposit = (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0;
-      return { ...it, suggested, distributed, achieved, missing, pctOfMonthDeposit };
+      return { ...it, suggestedBase, suggestedEffective, distributed, achieved, missing, pctOfMonthDeposit };
     });
+
+    // Total sugerido efetivo do mês (metas já atingidas não entram neste mês)
+    const totalSuggestedEffective = planItems.reduce((s: number, it: any) => s + (Number(it?.suggestedEffective) || 0), 0);
 
     const planDistributedTotal = planItems.reduce((s: number, it: any) => s + (Number(it.distributed) || 0), 0);
 
@@ -1801,8 +1872,22 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
       byGoal,
       planItems,
       planDistributedTotal,
+      totalSuggestedEffective,
     };
   }, [investments, monthPlanColored, monthStats?.current]);
+
+  // Status do TOTAL sugerido vs. aporte realizado no mês
+  // - completo: aportado >= total sugerido
+  // - zero: aportado == 0
+  // - parcial: 0 < aportado < total sugerido
+  const monthPlanSuggestedStatus = useMemo(() => {
+    const suggested = Number(monthPlanColored?.total ?? 0);
+    const current = Number(monthStats?.current || 0);
+    if (suggested <= 0 && current <= 0) return 'zero' as const;
+    if (current <= 0) return 'zero' as const;
+    if (current + 0.0001 >= suggested) return 'complete' as const;
+    return 'partial' as const;
+  }, [monthPlanColored?.total, monthStats?.current]);
 
   // Alertas de vencimento (investimentos com "No Vencimento") - janela padrão: 30 dias
   const upcomingMaturities = useMemo(() => {
@@ -2062,7 +2147,45 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
-	                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total sugerido</p>
+	                  <div className="flex items-center justify-end gap-2">
+	                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Total sugerido</p>
+	                    <span
+	                      className={`inline-flex items-center justify-center rounded-lg border h-6 w-6 ${
+	                        monthPlanSuggestedStatus === 'complete'
+	                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+	                          : monthPlanSuggestedStatus === 'partial'
+	                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+	                            : 'bg-slate-500/10 border-slate-500/20 text-slate-400'
+	                      }`}
+	                      title={
+	                        monthPlanSuggestedStatus === 'complete'
+	                          ? 'Total sugerido do mês: aportado completamente'
+	                          : monthPlanSuggestedStatus === 'partial'
+	                            ? 'Total sugerido do mês: aportado parcialmente'
+	                            : 'Total sugerido do mês: aporte zerado'
+	                      }
+	                      aria-label={
+	                        monthPlanSuggestedStatus === 'complete'
+	                          ? 'Total sugerido do mês: aportado completamente'
+	                          : monthPlanSuggestedStatus === 'partial'
+	                            ? 'Total sugerido do mês: aportado parcialmente'
+	                            : 'Total sugerido do mês: aporte zerado'
+	                      }
+	                    >
+	                      {monthPlanSuggestedStatus === 'complete' ? (
+	                        <CheckCircle2 size={14} />
+	                      ) : monthPlanSuggestedStatus === 'partial' ? (
+	                        <AlertTriangle size={14} />
+	                      ) : (
+	                        <MinusCircle size={14} />
+	                      )}
+	                    </span>
+	                  </div>
+	                  {/*
+	                    Regra UX (definitiva):
+	                    - "Total Sugerido" deve ser SEMPRE a soma da sugestão base (required_per_month) de cada meta do plano.
+	                    - Ele não deve variar por metas já atingidas no mês (sugestão exibida pode zerar) nem por aportes/distribuições.
+	                  */}
 	                  <p className="text-sm font-black text-white">{formatVal(monthPlanColored.total)}</p>
                 </div>
                 <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/60 text-slate-400">
@@ -2086,6 +2209,19 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
         <span className="text-amber-400">Não distribuído <span className="text-amber-300 font-black">{formatVal(Math.max(0, (monthStats.current || 0) - (monthPlanActuals.totalDistributedAllGoals || 0)))}</span></span>
       </>
     ) : null}
+    {(() => {
+      // "Falta para sugerido" deve refletir quanto ainda falta distribuir para cumprir o TOTAL SUGERIDO (base)
+      // no mês, e não quanto falta aportar no mês (o usuário pode aportar e não distribuir, ou vice-versa).
+      const suggestedBase = monthPlanColored.total || 0;
+      const missingToSuggested = Math.max(0, suggestedBase - (monthPlanActuals.totalDistributedAllGoals || 0));
+      if (!suggestedBase || missingToSuggested <= 0) return null;
+      return (
+        <>
+          <span>•</span>
+          <span className="text-amber-400">Falta para sugerido <span className="text-amber-300 font-black">{formatVal(missingToSuggested)}</span></span>
+        </>
+      );
+    })()}
   </div>
 
   {(() => {
@@ -2106,14 +2242,16 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
                                     {(() => {
                     const planItems = Array.isArray(monthPlanActuals.planItems) ? monthPlanActuals.planItems : [];
-                    const visiblePlanItems = monthPlanShowAll ? planItems : planItems.slice(0, 3);
                     return (
                       <>
-                  {visiblePlanItems.map((it: any) => {
+                  {planItems.map((it: any) => {
 	                    // Percentual correto = participação da sugestão desta meta no Total Sugerido do Mês.
 	                    // (Mantemos o cálculo na própria `monthPlanColored.items` para evitar qualquer mismatch de ids.)
                     const pct = typeof it.pct === 'number' ? it.pct : 0;
-                    const suggested = Number(it.suggested ?? it.monthlyNum ?? parseBRL(it.monthly)) || 0;
+                    // `suggestedBase`: sugerido calculado do mês (para métricas/percentuais)
+                    // `suggestedEffective`: regra UX -> se já atingiu no mês, exibir sugerido 0 (recalcula no próximo mês)
+                    const suggestedBase = Number(it.suggestedBase ?? it.suggested ?? it.monthlyNum ?? parseBRL(it.monthly)) || 0;
+                    const suggestedEffective = Number(it.suggestedEffective ?? (Boolean(it.achieved) ? 0 : suggestedBase)) || 0;
                     const distributed = Number(it.distributed || 0);
                     const achieved = Boolean(it.achieved);
                     const missing = Number(it.missing || 0);
@@ -2124,7 +2262,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                             <p className="text-xs font-black text-white">{it.title}</p>
                             <p className="text-[10px] text-slate-400 mt-1">
                               Sugestão do mês:{' '}
-	                              <span className="font-black text-emerald-400">{formatVal(suggested)}</span>
+                              <span className="font-black text-emerald-400">{formatVal(suggestedEffective)}</span>
                               {it.due_date ? (
                                 <span className="text-slate-600"> • vence em {formatDateBR(it.due_date)}</span>
                               ) : (
@@ -2134,17 +2272,17 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
                             <div className="flex flex-wrap items-center gap-2 mt-2">
                               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-950/40 border border-slate-800/60 px-2 py-1 rounded-xl">
-                                Distribuído no mês: <span className="text-slate-200">{formatVal(distributed)}</span>
-                                {suggested > 0 ? (
-                                  <span className="text-slate-600"> • {Math.min(100, Math.round((distributed / suggested) * 100))}%</span>
+								Distribuído no mês: <span className="text-slate-200">{formatVal(distributed)}</span>
+								{suggestedBase > 0 ? (
+								  <span className="text-slate-600"> • {Math.min(100, Math.round((distributed / suggestedBase) * 100))}%</span>
                                 ) : null}
                               </span>
 
-                              {suggested > 0 && achieved ? (
+                              {suggestedBase > 0 && achieved ? (
                                 <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
                                   Objetivo do mês atingido
                                 </span>
-                              ) : suggested > 0 ? (
+                              ) : suggestedBase > 0 ? (
                                 <span className="text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-xl border bg-amber-500/10 border-amber-500/20 text-amber-400">
                                   Falta {formatVal(missing)}
                                 </span>
@@ -2154,29 +2292,20 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 	                          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{pct.toFixed(0)}%</span>
                         </div>
                         {/* Barra: distribuído vs sugerido */}
-                        {suggested > 0 && (
+                        {suggestedBase > 0 && (
                           <div className="mt-3">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-[9px] font-black uppercase tracking-widest text-slate-600">Progresso do mês</span>
-	                              <span className={`text-[10px] font-black ${achieved ? 'text-emerald-400' : 'text-amber-400'}`}>{Math.min(100, Math.round((distributed / suggested) * 100))}%</span>
+	                              <span className={`text-[10px] font-black ${achieved ? 'text-emerald-400' : 'text-amber-400'}`}>{Math.min(100, Math.round((distributed / suggestedBase) * 100))}%</span>
                             </div>
                             <div className="w-full h-2 rounded-full overflow-hidden border border-slate-800/60 bg-slate-950/40">
-	                              <div className={`h-full ${achieved ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, (distributed / suggested) * 100)}%` }} />
+	                              <div className={`h-full ${achieved ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${Math.min(100, (distributed / suggestedBase) * 100)}%` }} />
                             </div>
                           </div>
                         )}
                       </div>
                     );
                   })}
-                        {planItems.length > 3 && (
-                          <button
-                            type="button"
-                            onClick={() => setMonthPlanShowAll(v => !v)}
-                            className="w-full mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-white bg-slate-950/30 border border-slate-800/60 rounded-2xl py-2 transition-colors"
-                          >
-                            {monthPlanShowAll ? 'Ver menos' : 'Ver todas (' + planItems.length + ')'}
-                          </button>
-                        )}
                       </>
                     );
                   })()}
@@ -2304,15 +2433,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
              <Sparkles size={14} className="text-emerald-500" /> INSIGHTS DO DIA SALTINVEST
           </h3>
 
-          {!isAiLoading && Array.isArray(aiInsights) && aiInsights.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setInsightsExpanded(v => !v)}
-              className="text-[10px] font-black uppercase tracking-widest text-slate-500 hover:text-white transition-colors"
-            >
-              {insightsExpanded ? 'Ver menos' : `Ver todos (${aiInsights.length})`}
-            </button>
-          )}
+          {/* UX: removido "Ver todos/Ver menos" para manter a Home mais limpa no mobile */}
         </div>
 
         {aiError && (
@@ -2344,7 +2465,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
 
               const featured = sorted[0];
               const rest = sorted.slice(1);
-              const visible = insightsExpanded ? rest : rest.slice(0, 1);
+              const visible = rest;
 
               const metaByType = (t: string) => {
                 if (t === 'Alerta') return { icon: <AlertTriangle size={18} />, cls: 'text-red-300 bg-red-500/10 border-red-500/20', tag: 'ALERTA' };
@@ -2398,11 +2519,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, goalP
                   {visible.map((insight: any, idx: number) => (
                     <SmallCard key={idx} insight={insight} />
                   ))}
-                  {!insightsExpanded && rest.length > 1 && (
-                    <div className="md:col-span-2 text-center text-[10px] text-slate-600">
-                      + {rest.length - 1} outros insights disponíveis.
-                    </div>
-                  )}
+                  {/* UX: exibimos todos os insights restantes para evitar toggle na Home */}
                 </>
               );
             })()
@@ -3238,12 +3355,12 @@ const goalsForAllocation = useMemo(() => {
             </div>
 
             <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
-              <span className={`${distOver ? 'text-red-400' : 'text-slate-500'}`}>Total alocado</span>
-              <span className={`${distOver ? 'text-red-400' : 'text-emerald-400'}`}>{formatVal(distTotal)} / {formatVal(amountNumber || 0)}</span>
+              <span className={`${distOver ? 'text-red-400' : 'text-slate-500'}`}>Restante para alocar</span>
+              <span className={`${distOver ? 'text-red-400' : 'text-emerald-400'}`}>{formatVal(Math.max(0, (amountNumber || 0) - distTotal))}</span>
             </div>
             {distOver && (
               <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black uppercase tracking-widest text-center">
-                A soma das metas não pode exceder o valor do investimento.
+                A soma das metas não pode exceder o valor do investimento. Excedeu {formatVal(distTotal - (amountNumber || 0))}.
               </div>
             )}
 

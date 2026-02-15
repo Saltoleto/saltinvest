@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS public.investments (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- 4.1. Tabela associativa de distribuição de investimentos por meta (fonte auditável)
+-- Cada linha representa quanto de um investimento foi alocado para uma meta.
+CREATE TABLE IF NOT EXISTS public.investment_allocations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  investment_id UUID REFERENCES public.investments(id) ON DELETE CASCADE NOT NULL,
+  goal_id UUID REFERENCES public.goals(id) ON DELETE CASCADE NOT NULL,
+  amount NUMERIC NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT investment_allocations_amount_nonneg CHECK (amount >= 0),
+  CONSTRAINT investment_allocations_unique UNIQUE (investment_id, goal_id)
+);
+
 -- 5. Tabela de Configurações do Usuário (XP, Nível, Alocação)
 CREATE TABLE IF NOT EXISTS public.user_config (
   user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -70,15 +83,13 @@ CREATE TABLE IF NOT EXISTS public.ai_insights (
 -- Índices básicos (opcionais, mas recomendados)
 CREATE INDEX IF NOT EXISTS idx_asset_classes_user_id ON public.asset_classes(user_id);
 CREATE INDEX IF NOT EXISTS idx_institutions_user_id ON public.institutions(user_id);
-CREATE INDEX IF NOT EXISTS idx_goals_user_id_created_at ON public.goals(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_investments_user_id_created_at ON public.investments(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_insights_user_id_created_at ON public.ai_insights(user_id, created_at DESC);
 
 -- RLS
 ALTER TABLE public.asset_classes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.institutions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.investment_allocations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_insights ENABLE ROW LEVEL SECURITY;
 
@@ -107,6 +118,12 @@ FOR ALL
 USING (auth.uid() = user_id)
 WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can manage their own investment allocations" ON public.investment_allocations;
+CREATE POLICY "Users can manage their own investment allocations" ON public.investment_allocations
+FOR ALL
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
 DROP POLICY IF EXISTS "Users can manage their own config" ON public.user_config;
 CREATE POLICY "Users can manage their own config" ON public.user_config
 FOR ALL
@@ -126,8 +143,8 @@ WITH CHECK (auth.uid() = user_id);
 -- - valor investido na meta (somando o JSONB investments.distributions)
 -- - % de progresso, valor restante, e status (Ativa/Atrasada/Concluída)
 --
--- Observação: investments.distributions é JSONB com chaves = goal_id (texto)
--- e valores numéricos (armazenados como number).
+-- Observação: a fonte preferencial para progresso de metas é investment_allocations.
+-- O campo investments.distributions é mantido por retrocompatibilidade, mas não é a fonte primária.
 -- =============================================================
 
 -- View: progresso de metas
@@ -135,64 +152,109 @@ DROP VIEW IF EXISTS public.v_goal_progress;
 -- IMPORTANTE: `security_invoker=true` faz a view respeitar permissões/RLS do usuário que consulta,
 -- evitando o alerta de SECURITY DEFINER no Supabase.
 CREATE VIEW public.v_goal_progress WITH (security_invoker = true) AS
-WITH dist AS (
-  SELECT
-    i.user_id,
-    (e.key)::uuid AS goal_id,
-    COALESCE((e.value)::numeric, 0) AS amount
-  FROM public.investments i
-  CROSS JOIN LATERAL jsonb_each(COALESCE(i.distributions, '{}'::jsonb)) AS e(key, value)
-)
-SELECT
-  g.user_id,
-  g.id AS goal_id,
-  g.title,
-  g.target,
-  g.due_date,
-  g.include_in_plan,
-  g.created_at,
-  COALESCE(SUM(d.amount), 0) AS invested_amount,
-  GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) AS remaining_amount,
-  CASE
-    WHEN g.due_date IS NULL OR GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) = 0 THEN NULL
-    ELSE GREATEST(
-      1,
-      (
-        (EXTRACT(YEAR FROM AGE(g.due_date, CURRENT_DATE)) * 12)
-        + EXTRACT(MONTH FROM AGE(g.due_date, CURRENT_DATE))
-        + 1
-      )::int
-    )
-  END AS months_left,
-  CASE
-    WHEN g.due_date IS NULL THEN NULL
-    WHEN GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0) = 0 THEN 0
-    ELSE ROUND(
-      GREATEST(g.target - COALESCE(SUM(d.amount), 0), 0)
-      / GREATEST(
-          1,
+WITH
+  -- soma do aportado por meta (tabela associativa)
+  alloc_sum AS (
+    SELECT
+      ia.user_id,
+      ia.goal_id,
+      COALESCE(SUM(ia.amount), 0)::numeric AS invested_amount
+    FROM public.investment_allocations ia
+    GROUP BY ia.user_id, ia.goal_id
+  ),
+  -- detecta se houve qualquer aporte no mês corrente (para "travar" o mês atual no cálculo)
+  alloc_this_month AS (
+    SELECT
+      ia.user_id,
+      ia.goal_id,
+      1::int AS has_alloc_this_month
+    FROM public.investment_allocations ia
+    JOIN public.investments i
+      ON i.id = ia.investment_id
+     AND i.user_id = ia.user_id
+    WHERE
+      date_trunc('month', COALESCE(i.date, i.created_at)) = date_trunc('month', CURRENT_DATE)
+    GROUP BY ia.user_id, ia.goal_id
+  ),
+  base AS (
+    SELECT
+      g.id,
+      g.user_id,
+      g.title,
+      g.target,
+      g.due_date,
+      g.include_in_plan,
+      g.created_at,
+      COALESCE(a.invested_amount, 0)::numeric AS invested_amount,
+      GREATEST((g.target - COALESCE(a.invested_amount, 0))::numeric, 0)::numeric AS remaining_amount,
+      -- meses totais "incluindo o mês atual"
+      CASE
+        WHEN g.due_date IS NULL THEN NULL::int
+        ELSE GREATEST(
           (
-            (EXTRACT(YEAR FROM AGE(g.due_date, CURRENT_DATE)) * 12)
-            + EXTRACT(MONTH FROM AGE(g.due_date, CURRENT_DATE))
-            + 1
-          )::int
-        ),
-      2
-    )
+            (EXTRACT(YEAR FROM g.due_date)::int * 12 + EXTRACT(MONTH FROM g.due_date)::int)
+            - (EXTRACT(YEAR FROM CURRENT_DATE)::int * 12 + EXTRACT(MONTH FROM CURRENT_DATE)::int)
+          ) + 1,
+          0
+        )::int
+      END AS months_total_from_now,
+      COALESCE(atm.has_alloc_this_month, 0)::int AS has_alloc_this_month,
+      (date_trunc('month', g.due_date) = date_trunc('month', CURRENT_DATE)) AS is_due_current_month
+    FROM public.goals g
+    LEFT JOIN alloc_sum a
+      ON a.user_id = g.user_id
+     AND a.goal_id = g.id
+    LEFT JOIN alloc_this_month atm
+      ON atm.user_id = g.user_id
+     AND atm.goal_id = g.id
+    WHERE g.status = 'Ativa'
+  )
+SELECT
+  b.id,
+  b.user_id,
+  b.title,
+  b.target,
+  b.due_date,
+  b.include_in_plan,
+  b.created_at,
+  b.invested_amount,
+  b.remaining_amount,
+  -- months_left (regra):
+  -- 1) se já atingiu, 0
+  -- 2) se o vencimento é no mês corrente e ainda falta, mantém 1 (não pode virar 0 com aporte parcial)
+  -- 3) caso contrário: meses totais incluindo o mês atual, e se houve aporte no mês corrente, desconta 1 (próximos meses)
+  CASE
+    WHEN b.due_date IS NULL THEN NULL::int
+    WHEN b.remaining_amount <= 0 THEN 0::int
+    WHEN b.is_due_current_month THEN 1::int
+    ELSE GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0)::int
+  END AS months_left,
+  -- required_per_month:
+  -- 1) se já atingiu, 0
+  -- 2) se vencimento é no mês corrente, precisa completar o restante ainda nesse mês
+  -- 3) caso months_left <= 0 (atrasada/sem meses), mostra o restante como "urgente"
+  -- 4) caso normal: restante / months_left
+  CASE
+    WHEN b.due_date IS NULL THEN NULL::numeric
+    WHEN b.remaining_amount <= 0 THEN 0::numeric
+    WHEN b.is_due_current_month THEN ROUND(b.remaining_amount, 2)
+    ELSE
+      CASE
+        WHEN GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0) <= 0 THEN ROUND(b.remaining_amount, 2)
+        ELSE ROUND(
+          b.remaining_amount
+          / NULLIF(GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0), 0),
+          2
+        )
+      END
   END AS required_per_month,
+  -- progresso global da meta
   CASE
-    WHEN g.target > 0 THEN ROUND((COALESCE(SUM(d.amount), 0) / g.target) * 100, 2)
-    ELSE 0
+    WHEN b.target = 0 THEN 0::numeric
+    ELSE ROUND(((b.invested_amount / b.target) * 100)::numeric, 2)
   END AS progress_percent,
-  CASE
-    WHEN g.target > 0 AND COALESCE(SUM(d.amount), 0) >= g.target THEN 'Concluída'
-    WHEN g.due_date IS NOT NULL AND g.due_date < CURRENT_DATE AND COALESCE(SUM(d.amount), 0) < g.target THEN 'Atrasada'
-    ELSE 'Ativa'
-  END AS status
-FROM public.goals g
-LEFT JOIN dist d
-  ON d.user_id = g.user_id AND d.goal_id = g.id
-GROUP BY g.user_id, g.id, g.title, g.target, g.due_date, g.created_at;
+  'Ativa'::text AS status
+FROM base b;
 
 -- Índices recomendados
 CREATE INDEX IF NOT EXISTS idx_goals_user_due_date ON public.goals (user_id, due_date);
@@ -200,6 +262,9 @@ CREATE INDEX IF NOT EXISTS idx_goals_user_created_at ON public.goals (user_id, c
 
 CREATE INDEX IF NOT EXISTS idx_investments_user_created_at ON public.investments (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_investments_user_date ON public.investments (user_id, date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_investment_allocations_user_goal ON public.investment_allocations (user_id, goal_id);
+CREATE INDEX IF NOT EXISTS idx_investment_allocations_user_investment ON public.investment_allocations (user_id, investment_id);
 
 -- Para acelerar consultas envolvendo distributions (jsonb)
 CREATE INDEX IF NOT EXISTS idx_investments_distributions_gin ON public.investments USING GIN (distributions jsonb_path_ops);
