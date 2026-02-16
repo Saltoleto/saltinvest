@@ -2,47 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Ajustes globais para evitar margens/estilos indesejados em inputs/botões */
-:root {
-  color-scheme: dark;
-}
-
 html, body {
   height: 100%;
-}
-
-body {
-  margin: 0;
-  background: #020617; /* slate-950 */
-}
-
-button, input, select, textarea {
-  font: inherit;
-}
-
-/* Privacidade: evita copiar textos de cards/painéis, mas mantém seleção em campos de formulário */
-.card-nocopy {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.card-nocopy input,
-.card-nocopy textarea,
-.card-nocopy select {
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-/* Opcional (aplicado no root do app): evita seleção/cópia em toda a UI,
-   mas mantém seleção em campos de formulário */
-.app-nocopy {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.app-nocopy input,
-.app-nocopy textarea,
-.app-nocopy select {
-  user-select: text;
-  -webkit-user-select: text;
 }

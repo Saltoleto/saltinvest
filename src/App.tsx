@@ -1857,11 +1857,19 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
     }
 
     // Mapa goalId -> required_per_month (via view v_goal_progress)
-    const requiredByGoal: Record<string, number> = {};
+    // required_per_month pode vir NULL da view (ex.: edge cases de cálculo no banco).
+    // Para evitar marcar "Objetivo do mês atingido" indevidamente, preservamos NULL.
+    const requiredByGoal: Record<string, number | null> = {};
     for (const pg of (Array.isArray(goalProgress) ? goalProgress : [])) {
       const gid = String((pg as any)?.goal_id ?? (pg as any)?.id ?? '');
       if (!gid) continue;
-      requiredByGoal[gid] = Number((pg as any)?.required_per_month) || 0;
+      const raw = (pg as any)?.required_per_month;
+      if (raw === null || raw === undefined || raw === '') {
+        requiredByGoal[gid] = null;
+        continue;
+      }
+      const n = Number(raw);
+      requiredByGoal[gid] = Number.isFinite(n) ? n : null;
     }
 
     // Metas que tiveram lançamentos (distribuições) no mês atual — independente de status.
@@ -1877,20 +1885,21 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
       const gid = String(it?.id);
       const suggestedBase = Number(it?.monthlyNum ?? parseBRL(it?.monthly)) || 0;
       const distributed = Number(byGoal[gid] || 0);
-      const required = Number(requiredByGoal[gid] || 0);
+      const required = requiredByGoal[gid];
       // ✅ NOVA REGRA (única fonte):
       // Se o amount do mês atual (investment_allocations) >= required_per_month (v_goal_progress)
       // então a meta está com "Objetivo do mês atingido".
       // Regra estrita (conforme requisito): marcar como atingido quando
       // SUM(amount) do mês atual em investment_allocations >= required_per_month (v_goal_progress)
       // Mesmo que required_per_month seja 0 (ex.: meta já concluída e a view evita divisão por zero).
-      const achieved = (distributed + 0.0001) >= required;
-      const missing = Math.max(0, (required || 0) - distributed);
+      // Se required_per_month for NULL, não há base para afirmar "atingido".
+      const achieved = required != null ? (distributed + 0.0001) >= required : false;
+      const missing = Math.max(0, (required ?? 0) - distributed);
       // Mantém regra UX do sugerido: quando atingir o objetivo do mês (por required_per_month), sugerido vira 0.
       const suggestedEffective = achieved ? 0 : suggestedBase;
       // do aporte do mês, quanto isso representa
       const pctOfMonthDeposit = (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0;
-      return { ...it, suggestedBase, suggestedEffective, distributed, requiredPerMonth: required, achieved, missing, pctOfMonthDeposit };
+      return { ...it, suggestedBase, suggestedEffective, distributed, requiredPerMonth: (required ?? 0), achieved, missing, pctOfMonthDeposit };
     });
 
     // 🔥 Requisito: no Plano do Mês, mostrar também metas com lançamentos no mês atual,
@@ -1905,7 +1914,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
         const due_date = (g as any)?.due_date ?? null;
         const status = (g as any)?.status ?? null;
         const distributed = Number(byGoal[String(gid)] || 0);
-        const required = Number(requiredByGoal[String(gid)] || 0);
+        const required = requiredByGoal[String(gid)];
         return {
           id: gid,
           title,
@@ -1918,9 +1927,9 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
           suggestedBase: 0,
           suggestedEffective: 0,
           distributed,
-          requiredPerMonth: required,
-          achieved: (distributed + 0.0001) >= required,
-          missing: Math.max(0, (required || 0) - distributed),
+          requiredPerMonth: (required ?? 0),
+          achieved: required != null ? (distributed + 0.0001) >= required : false,
+          missing: Math.max(0, (required ?? 0) - distributed),
           pctOfMonthDeposit: (monthStats?.current || 0) > 0 ? (distributed / (monthStats.current || 1)) * 100 : 0,
         };
       })
@@ -1946,7 +1955,7 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
 
   // Timeline na Home deve incluir metas com lançamentos no mês atual, mesmo concluídas.
   const timelineGoalsSorted = useMemo(() => {
-    const base = (Array.isArray(activeGoalsSorted) ? activeGoalsSorted : []).filter((g: any) => Boolean((g as any)?.include_in_plan));
+    const base = Array.isArray(activeGoalsSorted) ? activeGoalsSorted : [];
     const launchedIds = Array.isArray((monthPlanActuals as any)?.launchedGoalIdsThisMonth)
       ? (monthPlanActuals as any).launchedGoalIdsThisMonth
       : [];
@@ -1956,7 +1965,6 @@ function DashboardView({ stats, level, xpLevel, total, goals, investments, inves
       .filter((gid: string) => !baseIds.has(String(gid)))
       .map((gid: string) => (goalsData || []).find((g: any) => String(g?.id) === String(gid)))
       .filter(Boolean)
-      .filter((g: any) => Boolean(g?.include_in_plan))
       .map((g: any) => {
         // Converter para o shape esperado pela Timeline
         const id = String(g?.id);

@@ -162,20 +162,6 @@ WITH
     FROM public.investment_allocations ia
     GROUP BY ia.user_id, ia.goal_id
   ),
-  -- detecta se houve qualquer aporte no mês corrente (para "travar" o mês atual no cálculo)
-  alloc_this_month AS (
-    SELECT
-      ia.user_id,
-      ia.goal_id,
-      1::int AS has_alloc_this_month
-    FROM public.investment_allocations ia
-    JOIN public.investments i
-      ON i.id = ia.investment_id
-     AND i.user_id = ia.user_id
-    WHERE
-      date_trunc('month', COALESCE(i.date, i.created_at)) = date_trunc('month', CURRENT_DATE)
-    GROUP BY ia.user_id, ia.goal_id
-  ),
   base AS (
     SELECT
       g.id,
@@ -186,28 +172,13 @@ WITH
       g.include_in_plan,
       g.created_at,
       COALESCE(a.invested_amount, 0)::numeric AS invested_amount,
-      GREATEST((g.target - COALESCE(a.invested_amount, 0))::numeric, 0)::numeric AS remaining_amount,
-      -- meses totais "incluindo o mês atual"
-      CASE
-        WHEN g.due_date IS NULL THEN NULL::int
-        ELSE GREATEST(
-          (
-            (EXTRACT(YEAR FROM g.due_date)::int * 12 + EXTRACT(MONTH FROM g.due_date)::int)
-            - (EXTRACT(YEAR FROM CURRENT_DATE)::int * 12 + EXTRACT(MONTH FROM CURRENT_DATE)::int)
-          ) + 1,
-          0
-        )::int
-      END AS months_total_from_now,
-      COALESCE(atm.has_alloc_this_month, 0)::int AS has_alloc_this_month,
-      (date_trunc('month', g.due_date) = date_trunc('month', CURRENT_DATE)) AS is_due_current_month
+      GREATEST((g.target - COALESCE(a.invested_amount, 0))::numeric, 0)::numeric AS remaining_amount
     FROM public.goals g
     LEFT JOIN alloc_sum a
       ON a.user_id = g.user_id
      AND a.goal_id = g.id
-    LEFT JOIN alloc_this_month atm
-      ON atm.user_id = g.user_id
-     AND atm.goal_id = g.id
-    WHERE g.status = 'Ativa'
+    -- OBS: a tabela public.goals NÃO possui coluna `status` no modelo do SaltInvest.
+    -- O status é derivado (calculado) abaixo, a partir de remaining_amount e due_date.
   )
 SELECT
   b.id,
@@ -219,42 +190,45 @@ SELECT
   b.created_at,
   b.invested_amount,
   b.remaining_amount,
-  -- months_left (regra):
+  ml.months_left,
+  -- required_per_month (robusto): nunca retorna NULL quando due_date existe.
+  -- Regras:
   -- 1) se já atingiu, 0
-  -- 2) se o vencimento é no mês corrente e ainda falta, mantém 1 (não pode virar 0 com aporte parcial)
-  -- 3) caso contrário: meses totais incluindo o mês atual, e se houve aporte no mês corrente, desconta 1 (próximos meses)
-  CASE
-    WHEN b.due_date IS NULL THEN NULL::int
-    WHEN b.remaining_amount <= 0 THEN 0::int
-    WHEN b.is_due_current_month THEN 1::int
-    ELSE GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0)::int
-  END AS months_left,
-  -- required_per_month:
-  -- 1) se já atingiu, 0
-  -- 2) se vencimento é no mês corrente, precisa completar o restante ainda nesse mês
-  -- 3) caso months_left <= 0 (atrasada/sem meses), mostra o restante como "urgente"
-  -- 4) caso normal: restante / months_left
+  -- 2) se meta vencida (due_date < hoje) e ainda falta, "urgente" = restante
+  -- 3) caso normal: restante / months_left (months_left >= 1)
   CASE
     WHEN b.due_date IS NULL THEN NULL::numeric
     WHEN b.remaining_amount <= 0 THEN 0::numeric
-    WHEN b.is_due_current_month THEN ROUND(b.remaining_amount, 2)
-    ELSE
-      CASE
-        WHEN GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0) <= 0 THEN ROUND(b.remaining_amount, 2)
-        ELSE ROUND(
-          b.remaining_amount
-          / NULLIF(GREATEST((b.months_total_from_now - b.has_alloc_this_month), 0), 0),
-          2
-        )
-      END
+    WHEN b.due_date < CURRENT_DATE THEN ROUND(b.remaining_amount, 2)
+    ELSE ROUND(b.remaining_amount / NULLIF(ml.months_left, 0), 2)
   END AS required_per_month,
   -- progresso global da meta
   CASE
     WHEN b.target = 0 THEN 0::numeric
     ELSE ROUND(((b.invested_amount / b.target) * 100)::numeric, 2)
   END AS progress_percent,
-  'Ativa'::text AS status
-FROM base b;
+  -- status derivado (não persistido em goals)
+  CASE
+    WHEN b.remaining_amount <= 0 THEN 'Concluida'::text
+    WHEN b.due_date IS NOT NULL AND b.due_date < CURRENT_DATE THEN 'Atrasada'::text
+    ELSE 'Ativa'::text
+  END AS status
+FROM base b
+CROSS JOIN LATERAL (
+  SELECT
+    CASE
+      WHEN b.due_date IS NULL THEN NULL::int
+      WHEN b.remaining_amount <= 0 THEN 0::int
+      WHEN b.due_date < CURRENT_DATE THEN 0::int
+      ELSE GREATEST(
+        (
+          (EXTRACT(YEAR FROM age(date_trunc('month', b.due_date), date_trunc('month', CURRENT_DATE)))::int * 12)
+          + (EXTRACT(MONTH FROM age(date_trunc('month', b.due_date), date_trunc('month', CURRENT_DATE)))::int)
+        ) + 1,
+        1
+      )::int
+    END AS months_left
+) ml;
 
 -- Índices recomendados
 CREATE INDEX IF NOT EXISTS idx_goals_user_due_date ON public.goals (user_id, due_date);
