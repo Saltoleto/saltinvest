@@ -2,13 +2,10 @@ import React from "react";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
-import Button from "@/ui/primitives/Button";
 import { useAsync } from "@/state/useAsync";
 import { listGoalsEvolution } from "@/services/goals";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
 import { sum } from "@/lib/validate";
-import { useNavigate } from "react-router-dom";
-import { Icon } from "@/ui/layout/icons";
 
 function monthsFromDays(days: number): number {
   if (!isFinite(days)) return 1;
@@ -17,7 +14,6 @@ function monthsFromDays(days: number): number {
 }
 
 export default function MonthlyPlanPage() {
-  const navigate = useNavigate();
   const goals = useAsync(() => listGoalsEvolution(), []);
 
   const rows = React.useMemo(() => {
@@ -50,17 +46,6 @@ export default function MonthlyPlanPage() {
             <div className="mt-2 text-sm text-slate-400">
               Soma dos aportes recomendados para as metas marcadas como <span className="text-sky-200">Plano do mês</span>, distribuindo o valor restante pelos meses até a data-alvo.
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => navigate("/app/investments/new")}
-              aria-label="Registrar aporte"
-              title="Registrar aporte"
-              className="h-10 w-10 px-0 rounded-full"
-            >
-              <Icon name="plus" className="h-5 w-5" />
-              <span className="sr-only">Registrar aporte</span>
-            </Button>
           </div>
         </div>
       </Card>

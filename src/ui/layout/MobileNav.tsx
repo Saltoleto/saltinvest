@@ -16,13 +16,13 @@ export default function MobileNav() {
               to={item.to}
               className={({ isActive }) =>
                 [
-                  "flex flex-col items-center justify-center gap-1 rounded-xl2 px-2 py-2 text-[11px] transition",
+                  "flex items-center justify-center rounded-xl2 px-2 py-2 transition",
                   isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
                 ].join(" ")
               }
             >
               <Icon name={item.icon} className="h-5 w-5" />
-              <span className="leading-none">{item.label}</span>
+              <span className="sr-only">{item.label}</span>
             </NavLink>
           ))}
         </div>
