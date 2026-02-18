@@ -8,7 +8,7 @@ import { useAsync } from "@/state/useAsync";
 import { deleteInvestment, listInvestments, setInvestmentRedeemed } from "@/services/investments";
 import { formatBRL, formatDateBR } from "@/lib/format";
 import { useToast } from "@/ui/feedback/Toast";
-import { Icon } from "@/ui/layout/icons";
+// NOTE: The primary "+" action for Investments lives in the TopBar.
 
 export default function InvestmentsPage() {
   const toast = useToast();
@@ -62,15 +62,6 @@ export default function InvestmentsPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
           <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
-          <Button
-            onClick={() => navigate("/app/investments/new")}
-            aria-label="Novo investimento"
-            title="Novo investimento"
-            className="h-10 w-10 px-0 rounded-full"
-          >
-            <Icon name="plus" className="h-5 w-5" />
-            <span className="sr-only">Novo investimento</span>
-          </Button>
         </div>
       </Card>
 
