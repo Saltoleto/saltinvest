@@ -143,6 +143,137 @@ JOIN public.institutions inst ON i.institution_id = inst.id
 WHERE i.is_redeemed = FALSE
 GROUP BY i.user_id, inst.name;
 
+-- =========================
+-- PLANO DO MÊS (Views)
+-- =========================
+-- Regras:
+-- - suggested_this_month = (target_value - current_contributed) / months_remaining
+-- - months_remaining considera meses-calendário a partir do mês atual até o mês da target_date (inclusive)
+--   Ex.: fev -> dez = 11, jun -> dez = 7
+-- - total do mês = soma do suggested_this_month (somente metas is_monthly_plan = true)
+-- - subtrai aportes feitos no mês atual (investment_allocations vinculadas a investments.created_at no mês atual)
+-- - repete automaticamente mês a mês pelo filtro de created_at
+
+CREATE OR REPLACE VIEW public.v_monthly_plan_goals AS
+WITH
+params AS (
+  SELECT date_trunc('month', CURRENT_DATE)::date AS current_month
+),
+goal_base AS (
+  SELECT
+    g.id                 AS goal_id,
+    g.user_id,
+    g.name,
+    g.target_value,
+    g.target_date,
+    g.is_monthly_plan,
+    COALESCE(SUM(ia.amount), 0)::numeric(15,2) AS current_contributed
+  FROM public.goals g
+  LEFT JOIN public.investment_allocations ia
+    ON ia.goal_id = g.id
+  GROUP BY g.id, g.user_id, g.name, g.target_value, g.target_date, g.is_monthly_plan
+),
+months_calc AS (
+  SELECT
+    gb.*,
+    p.current_month,
+    date_trunc('month', gb.target_date)::date AS target_month,
+    (
+      (EXTRACT(YEAR  FROM date_trunc('month', gb.target_date))::int - EXTRACT(YEAR  FROM p.current_month)::int) * 12
+      + (EXTRACT(MONTH FROM date_trunc('month', gb.target_date))::int - EXTRACT(MONTH FROM p.current_month)::int)
+      + 1
+    ) AS months_remaining_raw
+  FROM goal_base gb
+  CROSS JOIN params p
+),
+aportes_mes AS (
+  SELECT
+    ia.goal_id,
+    i.user_id,
+    COALESCE(SUM(ia.amount), 0)::numeric(15,2) AS contributed_this_month
+  FROM public.investment_allocations ia
+  JOIN public.investments i
+    ON i.id = ia.investment_id
+  WHERE date_trunc('month', i.created_at)::date = date_trunc('month', CURRENT_DATE)::date
+  GROUP BY ia.goal_id, i.user_id
+)
+SELECT
+  mc.user_id,
+  mc.goal_id,
+  mc.name,
+  mc.target_value,
+  mc.target_date,
+  mc.is_monthly_plan,
+
+  mc.current_contributed,
+
+  GREATEST(mc.target_value - mc.current_contributed, 0)::numeric(15,2) AS remaining_value,
+  GREATEST(mc.months_remaining_raw, 0) AS months_remaining,
+
+  CASE
+    WHEN mc.is_monthly_plan IS TRUE
+     AND GREATEST(mc.months_remaining_raw, 0) > 0
+    THEN (GREATEST(mc.target_value - mc.current_contributed, 0) / GREATEST(mc.months_remaining_raw, 1))::numeric(15,2)
+    ELSE 0::numeric(15,2)
+  END AS suggested_this_month,
+
+  COALESCE(am.contributed_this_month, 0)::numeric(15,2) AS contributed_this_month,
+
+  GREATEST(
+    (
+      CASE
+        WHEN mc.is_monthly_plan IS TRUE
+         AND GREATEST(mc.months_remaining_raw, 0) > 0
+        THEN (GREATEST(mc.target_value - mc.current_contributed, 0) / GREATEST(mc.months_remaining_raw, 1))::numeric(15,2)
+        ELSE 0::numeric(15,2)
+      END
+    ) - COALESCE(am.contributed_this_month, 0),
+    0
+  )::numeric(15,2) AS remaining_this_month
+
+FROM months_calc mc
+LEFT JOIN aportes_mes am
+  ON am.goal_id = mc.goal_id
+ AND am.user_id = mc.user_id;
+
+
+CREATE OR REPLACE VIEW public.v_monthly_plan_summary AS
+SELECT
+  user_id,
+  SUM(suggested_this_month)::numeric(15,2)   AS total_suggested_this_month,
+  SUM(contributed_this_month)::numeric(15,2) AS total_contributed_this_month,
+  SUM(remaining_this_month)::numeric(15,2)   AS total_remaining_this_month
+FROM public.v_monthly_plan_goals
+WHERE is_monthly_plan IS TRUE
+GROUP BY user_id;
+
+
+-- Ranking de metas por prioridade (Plano do mês)
+-- Heurística (premium/útil):
+-- - Quanto menor o prazo (months_remaining), maior a prioridade
+-- - Quanto maior o gap relativo (remaining_value/target_value), maior a prioridade
+-- priority_score combina ambos; use priority_rank para ordenar.
+CREATE OR REPLACE VIEW public.v_monthly_plan_ranking AS
+SELECT
+  mpg.*,
+  (
+    (CASE WHEN mpg.months_remaining > 0 THEN (1::numeric / mpg.months_remaining) ELSE 0::numeric END) * 0.6
+    + (CASE WHEN mpg.target_value > 0 THEN (mpg.remaining_value / mpg.target_value) ELSE 0::numeric END) * 0.4
+  )::numeric(15,6) AS priority_score,
+  DENSE_RANK() OVER (
+    PARTITION BY mpg.user_id
+    ORDER BY
+      (
+        (CASE WHEN mpg.months_remaining > 0 THEN (1::numeric / mpg.months_remaining) ELSE 0::numeric END) * 0.6
+        + (CASE WHEN mpg.target_value > 0 THEN (mpg.remaining_value / mpg.target_value) ELSE 0::numeric END) * 0.4
+      ) DESC,
+      mpg.months_remaining ASC,
+      mpg.remaining_value DESC
+  ) AS priority_rank
+FROM public.v_monthly_plan_goals mpg
+WHERE mpg.is_monthly_plan IS TRUE
+  AND mpg.remaining_value > 0;
+
 -- 5. TRIGGER PARA ATUALIZAÇÃO DE TIMESTAMPS
 CREATE OR REPLACE FUNCTION update_timestamp()
 RETURNS TRIGGER AS $$

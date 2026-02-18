@@ -55,8 +55,12 @@ export default function InvestmentsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4">
-        <div className="max-w-xl">
+      <Card className="p-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <div className="text-slate-100 font-semibold">Investimentos</div>
+          <div className="text-sm text-slate-400">Registre ativos e distribua aportes em metas.</div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
           <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </Card>

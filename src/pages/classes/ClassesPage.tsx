@@ -8,6 +8,7 @@ import { useAsync } from "@/state/useAsync";
 import { listClasses, upsertClass, deleteClass } from "@/services/classes";
 import { useToast } from "@/ui/feedback/Toast";
 import { requireNonEmpty } from "@/lib/validate";
+import { Icon } from "@/ui/layout/icons";
 
 type FormState = { id?: string; name: string; target_percent: string };
 
@@ -25,14 +26,6 @@ export default function ClassesPage() {
     setErrs({});
     setOpen(true);
   }
-
-  // Open from TopBar "+" action
-  React.useEffect(() => {
-    const onOpen = () => openNew();
-    window.addEventListener("saltinvest:open-class-modal", onOpen as any);
-    return () => window.removeEventListener("saltinvest:open-class-modal", onOpen as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function openEdit(row: any) {
     setForm({ id: row.id, name: row.name, target_percent: String(row.target_percent ?? 0) });
@@ -79,6 +72,22 @@ export default function ClassesPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
+      <Card className="p-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-slate-100 font-semibold">Classes</div>
+          <div className="text-sm text-slate-400">Organize sua carteira por tipo de ativo.</div>
+        </div>
+        <Button
+          onClick={openNew}
+          aria-label="Nova classe"
+          title="Nova classe"
+          className="h-10 w-10 px-0 rounded-full"
+        >
+          <Icon name="plus" className="h-5 w-5" />
+          <span className="sr-only">Nova classe</span>
+        </Button>
+      </Card>
+
       <Card className="p-4">
         {classes.loading ? (
           <div className="text-sm text-slate-400">Carregando...</div>

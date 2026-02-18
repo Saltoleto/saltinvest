@@ -11,6 +11,7 @@ import { listGoals, listGoalsEvolution, upsertGoal, deleteGoal } from "@/service
 import { formatBRL, formatDateBR, clamp } from "@/lib/format";
 import { toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/validate";
 import { useToast } from "@/ui/feedback/Toast";
+import { Icon } from "@/ui/layout/icons";
 
 type FormState = {
   id?: string;
@@ -46,14 +47,6 @@ export default function GoalsPage() {
     reset();
     setOpen(true);
   }
-
-  // Open from TopBar "+" action
-  React.useEffect(() => {
-    const onOpen = () => openNew();
-    window.addEventListener("saltinvest:open-goal-modal", onOpen as any);
-    return () => window.removeEventListener("saltinvest:open-goal-modal", onOpen as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function openEdit(row: any) {
     setForm({
@@ -116,6 +109,22 @@ export default function GoalsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
+      <Card className="p-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-slate-100 font-semibold">Metas</div>
+          <div className="text-sm text-slate-400">Defina objetivos e acompanhe evolução com alocações.</div>
+        </div>
+        <Button
+          onClick={openNew}
+          aria-label="Nova meta"
+          title="Nova meta"
+          className="h-10 w-10 px-0 rounded-full"
+        >
+          <Icon name="plus" className="h-5 w-5" />
+          <span className="sr-only">Nova meta</span>
+        </Button>
+      </Card>
+
       <Card className="p-4">
         {goals.loading ? (
           <div className="text-sm text-slate-400">Carregando...</div>

@@ -63,8 +63,8 @@ export default function TargetsPage() {
       <Card className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-slate-100 font-semibold">Distribuição alvo</div>
-            <div className="mt-1 text-sm text-slate-400">Ajuste o percentual desejado por classe. Ideal: 100% no total.</div>
+            <div className="text-slate-100 font-semibold">Alvos da carteira</div>
+            <div className="mt-1 text-sm text-slate-400">Defina seu portfólio ideal por classe. O total pode ser 100% (recomendado).</div>
           </div>
           <div className="text-right">
             <div className="text-xs text-slate-400">Total</div>

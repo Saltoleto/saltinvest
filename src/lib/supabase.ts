@@ -103,6 +103,48 @@ export type Database = {
       v_fgc_exposure: {
         Row: { user_id: string; institution_name: string; covered_amount: number; uncovered_amount: number; total_in_institution: number };
       };
+      v_monthly_plan_goals: {
+        Row: {
+          user_id: string;
+          goal_id: string;
+          name: string;
+          target_value: number;
+          target_date: string;
+          is_monthly_plan: boolean;
+          current_contributed: number;
+          remaining_value: number;
+          months_remaining: number;
+          suggested_this_month: number;
+          contributed_this_month: number;
+          remaining_this_month: number;
+        };
+      };
+      v_monthly_plan_summary: {
+        Row: {
+          user_id: string;
+          total_suggested_this_month: number;
+          total_contributed_this_month: number;
+          total_remaining_this_month: number;
+        };
+      };
+      v_monthly_plan_ranking: {
+        Row: {
+          user_id: string;
+          goal_id: string;
+          name: string;
+          target_value: number;
+          target_date: string;
+          is_monthly_plan: boolean;
+          current_contributed: number;
+          remaining_value: number;
+          months_remaining: number;
+          suggested_this_month: number;
+          contributed_this_month: number;
+          remaining_this_month: number;
+          priority_score: number;
+          priority_rank: number;
+        };
+      };
     };
     Functions: {};
     Enums: {};

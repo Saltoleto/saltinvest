@@ -7,6 +7,7 @@ import { useAsync } from "@/state/useAsync";
 import { listInstitutions, upsertInstitution, deleteInstitution } from "@/services/institutions";
 import { useToast } from "@/ui/feedback/Toast";
 import { requireNonEmpty } from "@/lib/validate";
+import { Icon } from "@/ui/layout/icons";
 
 type FormState = { id?: string; name: string };
 
@@ -24,14 +25,6 @@ export default function InstitutionsPage() {
     setErrs({});
     setOpen(true);
   }
-
-  // Open from TopBar "+" action
-  React.useEffect(() => {
-    const onOpen = () => openNew();
-    window.addEventListener("saltinvest:open-institution-modal", onOpen as any);
-    return () => window.removeEventListener("saltinvest:open-institution-modal", onOpen as any);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function openEdit(row: any) {
     setForm({ id: row.id, name: row.name });
@@ -75,6 +68,22 @@ export default function InstitutionsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
+      <Card className="p-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-slate-100 font-semibold">Instituições</div>
+          <div className="text-sm text-slate-400">Organize seus investimentos por banco/corretora.</div>
+        </div>
+        <Button
+          onClick={openNew}
+          aria-label="Nova instituição"
+          title="Nova instituição"
+          className="h-10 w-10 px-0 rounded-full"
+        >
+          <Icon name="plus" className="h-5 w-5" />
+          <span className="sr-only">Nova instituição</span>
+        </Button>
+      </Card>
+
       <Card className="p-4">
         {inst.loading ? (
           <div className="text-sm text-slate-400">Carregando...</div>
