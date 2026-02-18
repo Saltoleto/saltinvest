@@ -1,34 +1,50 @@
-# SaltInvest (Supabase)
+# SaltInvest (React + Supabase + PWA)
 
-## Requisitos
-- Node 18+
+Aplicação PWA para **gestão de investimentos centralizada**, com experiência premium no **web** e **mobile**.
 
-## 1) Criar projeto no Supabase
-1. Crie um projeto no Supabase
-2. Abra o **SQL Editor** e execute: `supabase/schema.sql`
+## Stack
+- React + TypeScript + Vite
+- Supabase (Auth + Postgres + RLS)
+- TailwindCSS
+- PWA (vite-plugin-pwa)
 
-## 2) Variáveis de ambiente
-Crie um arquivo `.env` na raiz:
+## Como rodar
+
+### 1) Banco/Supabase
+1. Crie um projeto no Supabase.
+2. No SQL Editor, execute o script: `supabase/schema.sql`.
+
+> O schema inclui tabelas, views e políticas RLS por `user_id`.
+
+### 2) Variáveis de ambiente
+Crie um arquivo `.env.local` na raiz:
 
 ```bash
-cp .env.example .env
+VITE_SUPABASE_URL=SUASUPABASEURL
+VITE_SUPABASE_ANON_KEY=SUAANONKEY
 ```
 
-Preencha:
-
-```env
-VITE_SUPABASE_URL="https://xxxx.supabase.co"
-VITE_SUPABASE_ANON_KEY="xxxx"
-```
-
-## 3) Rodar local
+### 3) Instalar e rodar
 ```bash
-npm install
+npm i
 npm run dev
 ```
 
-Acesse: http://localhost:5173
+### 4) Build
+```bash
+npm run build
+npm run preview
+```
 
-## Observações
-- O layout/UX foi preservado; apenas a camada de dados migrou de Firebase para Supabase.
-- Rotas via React Router foram aplicadas para cada tela.
+## Rotas protegidas
+- Todas as rotas em `/app/*` são protegidas por sessão via `ProtectedRoute`.
+- Se não houver sessão, o usuário é redirecionado para `/login`.
+
+## UX premium
+- Layout responsivo com AppShell (sidebar no desktop + bottom nav no mobile)
+- Dashboard com estatísticas, gráficos, progresso de metas e exposição FGC
+- Planejamento mensal com **Total sugerido** baseado nas metas `is_monthly_plan = true`
+
+## Observações importantes
+- A chave **anon** do Supabase fica no cliente por padrão (ok). **Nunca** use `service_role` no front-end.
+- Se o app mostrar aviso de configuração, verifique `.env.local` e reinicie o dev server.
