@@ -5,8 +5,10 @@ import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
 import Badge from "@/ui/primitives/Badge";
 import Modal from "@/ui/primitives/Modal";
+import Select from "@/ui/primitives/Select";
 import { useAsync } from "@/state/useAsync";
 import { deleteInvestment, listInvestments, setInvestmentRedeemed } from "@/services/investments";
+import { listGoals } from "@/services/goals";
 import { formatBRL, formatDateBR } from "@/lib/format";
 import { useToast } from "@/ui/feedback/Toast";
 import { InvestmentForm, type InvestmentFormHandle } from "./InvestmentFormPage";
@@ -15,7 +17,9 @@ import { InvestmentForm, type InvestmentFormHandle } from "./InvestmentFormPage"
 export default function InvestmentsPage() {
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const invs = useAsync(() => listInvestments(), []);
+  const goals = useAsync(() => listGoals(), []);
+  const [goalId, setGoalId] = React.useState<string>("");
+  const invs = useAsync(() => listInvestments({ goal_id: goalId || null }), [goalId]);
 
   const modal = searchParams.get("modal");
   const editId = searchParams.get("edit");
@@ -72,6 +76,19 @@ export default function InvestmentsPage() {
           <div className="text-sm text-slate-400">Registre ativos e distribua aportes em metas.</div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+          <Select
+            label="Meta"
+            value={goalId}
+            onChange={(e) => setGoalId(e.target.value)}
+            className="sm:min-w-[260px]"
+          >
+            <option value="">Todas</option>
+            {(goals.data ?? []).map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </Select>
           <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
       </Card>

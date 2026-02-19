@@ -44,14 +44,35 @@ function normalizeClassId(input: string | null | undefined): string {
   throw new Error("Classe é obrigatória.");
 }
 
-export async function listInvestments(): Promise<InvestmentRow[]> {
+export async function listInvestments(opts?: { goal_id?: string | null }): Promise<InvestmentRow[]> {
   const uid = await requireUserId();
 
-  const { data, error } = await supabase
+  let restrictAppIds: string[] | null = null;
+  const goalId = opts?.goal_id ? String(opts.goal_id) : null;
+  if (goalId) {
+    // Filter investments that have at least one aporte for the selected goal.
+    const { data: aportes, error: eA } = await supabase
+      .from("aportes")
+      .select("aplicacao_id")
+      .eq("usuario_id", uid)
+      .eq("objetivo_id", goalId);
+    if (eA) throw eA;
+    const ids = Array.from(new Set((aportes ?? []).map((a: any) => String(a.aplicacao_id)))).filter(Boolean);
+    if (!ids.length) return [];
+    restrictAppIds = ids;
+  }
+
+  let q = supabase
     .from("aplicacoes")
-    .select("id, usuario_id, nome, valor_aplicado, categoria_ativo_id, instituicao_financeira_id, liquidez, data_vencimento, coberto_fgc, status, criado_em, atualizado_em, categorias_ativos(nome), instituicoes_financeiras(nome)")
+    .select(
+      "id, usuario_id, nome, valor_aplicado, categoria_ativo_id, instituicao_financeira_id, liquidez, data_vencimento, coberto_fgc, status, criado_em, atualizado_em, categorias_ativos(nome), instituicoes_financeiras(nome)"
+    )
     .eq("usuario_id", uid)
     .order("criado_em", { ascending: false });
+
+  if (restrictAppIds) q = q.in("id", restrictAppIds);
+
+  const { data, error } = await q;
   if (error) throw error;
 
   const appIds = (data ?? []).map((r: any) => String(r.id));

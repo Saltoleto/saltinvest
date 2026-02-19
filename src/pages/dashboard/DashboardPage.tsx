@@ -7,7 +7,81 @@ import { formatBRL, formatPercent } from "@/lib/format";
 import { getEquitySummary, getFgcExposure } from "@/services/analytics";
 import { listGoalsEvolution } from "@/services/goals";
 import { listInvestments } from "@/services/investments";
-import { Pie, PieChart, ResponsiveContainer, Tooltip, Cell } from "recharts";
+
+function pct(part: number, total: number): number {
+  if (!total) return 0;
+  return (part / total) * 100;
+}
+
+function ConcentrationCard({
+  title,
+  items,
+  accentA,
+  accentB,
+  labelA,
+  labelB
+}: {
+  title: string;
+  items: { name: string; value: number }[];
+  accentA: string;
+  accentB: string;
+  labelA?: string;
+  labelB?: string;
+}) {
+  const total = items.reduce((s, i) => s + (Number(i.value) || 0), 0);
+  const top = items.slice(0, 2);
+  const a = top[0];
+  const b = top[1];
+  const aPct = pct(a?.value ?? 0, total);
+  const bPct = pct(b?.value ?? 0, total);
+  const restPct = Math.max(0, 100 - aPct - bPct);
+
+  return (
+    <Card className="p-4">
+      <div className="text-slate-100 font-semibold">{title}</div>
+
+      {total ? (
+        <>
+          <div className="mt-3 grid gap-2">
+            {a ? (
+              <div className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`h-2.5 w-2.5 rounded-full ${accentA}`} />
+                  <span className="text-slate-200 text-sm font-medium truncate">{labelA ?? a.name}</span>
+                </div>
+                <div className="flex items-baseline gap-3 shrink-0">
+                  <span className="text-slate-100 font-semibold">{formatPercent(aPct)}</span>
+                  <span className="text-slate-300 text-sm">{formatBRL(a.value)}</span>
+                </div>
+              </div>
+            ) : null}
+
+            {b ? (
+              <div className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`h-2.5 w-2.5 rounded-full ${accentB}`} />
+                  <span className="text-slate-200 text-sm font-medium truncate">{labelB ?? b.name}</span>
+                </div>
+                <div className="flex items-baseline gap-3 shrink-0">
+                  <span className="text-slate-100 font-semibold">{formatPercent(bPct)}</span>
+                  <span className="text-slate-300 text-sm">{formatBRL(b.value)}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden flex">
+            <div className={accentA} style={{ width: `${aPct}%` }} />
+            <div className={accentB} style={{ width: `${bPct}%` }} />
+            <div className="bg-white/10" style={{ width: `${restPct}%` }} />
+          </div>
+        </>
+      ) : (
+        <EmptyState title="Sem dados" subtitle="Cadastre investimentos para ver a concentração." />
+      )}
+    </Card>
+  );
+}
 
 function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -162,63 +236,20 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      {/* Charts (mover para o final para priorizar resumo + ações) */}
+      {/* Concentração (cards premium, sem gráficos pesados) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="p-4">
-          <SectionHeader title="Concentração por classe" />
-          <div className="mt-3 h-[260px]">
-            {allocationsByClass.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie dataKey="value" data={allocationsByClass} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
-                    {allocationsByClass.map((_, i) => (
-                      <Cell key={i} fill={["#22c55e", "#60a5fa", "#fbbf24", "#a78bfa", "#f472b6", "#fb7185", "#34d399", "#38bdf8"][i % 8]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="Sem dados" subtitle="Cadastre investimentos e associe classes para ver a concentração." />
-            )}
-          </div>
-          <div className="mt-3 grid gap-2">
-            {allocationsByClass.slice(0, 4).map((x) => (
-              <div key={x.name} className="flex items-center justify-between text-sm">
-                <div className="text-slate-200">{x.name}</div>
-                <div className="text-slate-300">{formatBRL(x.value)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <SectionHeader title="Concentração por liquidez" />
-          <div className="mt-3 h-[260px]">
-            {allocationsByLiquidity.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie dataKey="value" data={allocationsByLiquidity} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
-                    {allocationsByLiquidity.map((_, i) => (
-                      <Cell key={i} fill={["#60a5fa", "#22c55e", "#fbbf24", "#a78bfa"][i % 4]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="Sem dados" subtitle="Cadastre investimentos com tipo de liquidez." />
-            )}
-          </div>
-          <div className="mt-3 grid gap-2">
-            {allocationsByLiquidity.map((x) => (
-              <div key={x.name} className="flex items-center justify-between text-sm">
-                <div className="text-slate-200">{x.name}</div>
-                <div className="text-slate-300">{formatBRL(x.value)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        <ConcentrationCard
+          title="Concentração por classe"
+          items={allocationsByClass}
+          accentA="bg-sky-400"
+          accentB="bg-emerald-400"
+        />
+        <ConcentrationCard
+          title="Concentração por liquidez"
+          items={allocationsByLiquidity}
+          accentA="bg-sky-400"
+          accentB="bg-amber-400"
+        />
       </div>
     </div>
   );

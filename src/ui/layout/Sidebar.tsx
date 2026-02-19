@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import Card from "../primitives/Card";
 import Button from "../primitives/Button";
+import Modal from "../primitives/Modal";
 import { navMainItems } from "./nav";
 import { Icon } from "./icons";
 import { useAuth } from "@/state/auth/AuthContext";
@@ -22,6 +23,7 @@ function Brand() {
 
 export default function Sidebar() {
   const { user, signOut } = useAuth();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
 
   return (
     <div className="sticky top-6">
@@ -50,12 +52,36 @@ export default function Sidebar() {
           <div className="text-xs text-slate-400">Logado como</div>
           <div className="text-sm text-slate-200 truncate">{user?.email ?? "—"}</div>
 
-          <Button variant="secondary" className="mt-3 w-full justify-center" onClick={() => void signOut()}>
+          <Button variant="secondary" className="mt-3 w-full justify-center" onClick={() => setConfirmOpen(true)}>
             <Icon name="logout" className="h-4 w-4" />
             Sair
           </Button>
         </div>
       </Card>
+
+      <Modal
+        open={confirmOpen}
+        title="Sair da conta"
+        onClose={() => setConfirmOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                setConfirmOpen(false);
+                await signOut();
+              }}
+            >
+              Sair
+            </Button>
+          </>
+        }
+      >
+        <div className="text-slate-200">Tem certeza que deseja sair?</div>
+        <div className="mt-2 text-sm text-slate-400">Você precisará fazer login novamente para acessar seus dados.</div>
+      </Modal>
     </div>
   );
 }

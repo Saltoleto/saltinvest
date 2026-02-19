@@ -3,14 +3,13 @@ import Card from "@/ui/primitives/Card";
 import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
 import Modal from "@/ui/primitives/Modal";
-import Badge from "@/ui/primitives/Badge";
 import { useAsync } from "@/state/useAsync";
 import { listClasses, upsertClass, deleteClass } from "@/services/classes";
 import { useToast } from "@/ui/feedback/Toast";
 import { requireNonEmpty } from "@/lib/validate";
 import { Icon } from "@/ui/layout/icons";
 
-type FormState = { id?: string; name: string; target_percent: string };
+type FormState = { id?: string; name: string };
 
 export default function ClassesPage() {
   const toast = useToast();
@@ -18,17 +17,17 @@ export default function ClassesPage() {
 
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>({ name: "", target_percent: "0" });
+  const [form, setForm] = React.useState<FormState>({ name: "" });
   const [errs, setErrs] = React.useState<Record<string, string>>({});
 
   function openNew() {
-    setForm({ name: "", target_percent: "0" });
+    setForm({ name: "" });
     setErrs({});
     setOpen(true);
   }
 
   function openEdit(row: any) {
-    setForm({ id: row.id, name: row.name, target_percent: String(row.target_percent ?? 0) });
+    setForm({ id: row.id, name: row.name });
     setErrs({});
     setOpen(true);
   }
@@ -38,15 +37,13 @@ export default function ClassesPage() {
     const msg = requireNonEmpty(form.name, "Nome");
     if (msg) e.name = msg;
 
-    const pct = Number(String(form.target_percent).replace(",", "."));
-    if (!isFinite(pct) || pct < 0 || pct > 100) e.target_percent = "Percentual deve estar entre 0 e 100.";
-
     setErrs(e);
     if (Object.keys(e).length) return;
 
     try {
       setSaving(true);
-      await upsertClass({ id: form.id, name: form.name.trim(), target_percent: pct });
+      // Percentual é definido somente na tela de Alvos.
+      await upsertClass({ id: form.id, name: form.name.trim() });
       toast.push({ title: "Classe salva", tone: "success" });
       setOpen(false);
       classes.reload();
@@ -97,9 +94,6 @@ export default function ClassesPage() {
               <div key={c.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-slate-100 font-medium">{c.name}</div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Alvo atual: <Badge variant="info">{Number(c.target_percent ?? 0).toFixed(1)}%</Badge>
-                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openEdit(c)} className="h-9 px-3">
@@ -137,14 +131,7 @@ export default function ClassesPage() {
       >
         <div className="grid gap-4">
           <Input label="Nome" placeholder="Ex: Renda fixa" value={form.name} error={errs.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
-          <Input
-            label="Percentual alvo (0 a 100)"
-            placeholder="Ex: 35"
-            value={form.target_percent}
-            error={errs.target_percent}
-            onChange={(e) => setForm((s) => ({ ...s, target_percent: e.target.value }))}
-          />
-          <div className="text-xs text-slate-500">Você também pode ajustar alvos na tela “Alvos da carteira”.</div>
+          <div className="text-xs text-slate-500">O percentual alvo é definido na tela “Alvos”.</div>
         </div>
       </Modal>
     </div>

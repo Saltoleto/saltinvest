@@ -65,7 +65,7 @@ export async function listClasses(): Promise<ClassRow[]> {
   }));
 }
 
-export async function upsertClass(payload: { id?: string; name: string; target_percent: number | null }): Promise<void> {
+export async function upsertClass(payload: { id?: string; name: string; target_percent?: number | null }): Promise<void> {
   const uid = await requireUserId();
   const policyId = await getOrCreatePrimaryPolicyId(uid);
 
@@ -87,26 +87,29 @@ export async function upsertClass(payload: { id?: string; name: string; target_p
     categoryId = String(data.id);
   }
 
-  const pct = Number(payload.target_percent ?? 0);
-  if (pct > 0) {
-    // Constraint requires 0 < percentual_alvo <= 100.
-    const { error } = await supabase.from("politicas_alocacao_itens").upsert(
-      {
-        politica_alocacao_id: policyId,
-        categoria_ativo_id: categoryId,
-        percentual_alvo: pct
-      },
-      { onConflict: "politica_alocacao_id,categoria_ativo_id" }
-    );
-    if (error) throw error;
-  } else {
-    // Zero means "not part of target policy".
-    const { error } = await supabase
-      .from("politicas_alocacao_itens")
-      .delete()
-      .eq("politica_alocacao_id", policyId)
-      .eq("categoria_ativo_id", categoryId);
-    if (error) throw error;
+  // Somente a tela de "Alvos" deve alterar percentuais.
+  if (Object.prototype.hasOwnProperty.call(payload, "target_percent")) {
+    const pct = Number(payload.target_percent ?? 0);
+    if (pct > 0) {
+      // Constraint requires 0 < percentual_alvo <= 100.
+      const { error } = await supabase.from("politicas_alocacao_itens").upsert(
+        {
+          politica_alocacao_id: policyId,
+          categoria_ativo_id: categoryId,
+          percentual_alvo: pct
+        },
+        { onConflict: "politica_alocacao_id,categoria_ativo_id" }
+      );
+      if (error) throw error;
+    } else {
+      // Zero means "not part of target policy".
+      const { error } = await supabase
+        .from("politicas_alocacao_itens")
+        .delete()
+        .eq("politica_alocacao_id", policyId)
+        .eq("categoria_ativo_id", categoryId);
+      if (error) throw error;
+    }
   }
 }
 
