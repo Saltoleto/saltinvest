@@ -142,6 +142,17 @@ export default function DashboardPage() {
     return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   }, [invs.data]);
 
+  const allocationsByInstitution = React.useMemo(() => {
+    const rows = invs.data ?? [];
+    const map = new Map<string, number>();
+    for (const r of rows) {
+      if (r.is_redeemed) continue;
+      const key = r.institution_name || "—";
+      map.set(key, (map.get(key) ?? 0) + (Number(r.total_value) || 0));
+    }
+    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  }, [invs.data]);
+
   const totalEquity = Number(equity.data?.total_equity ?? 0);
   const liquidEquity = Number(equity.data?.liquid_equity ?? 0);
   const fgcTotal = Number(equity.data?.fgc_protected_total ?? 0);
@@ -237,7 +248,7 @@ export default function DashboardPage() {
       </Card>
 
       {/* Concentração (cards premium, sem gráficos pesados) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <ConcentrationCard
           title="Concentração por classe"
           items={allocationsByClass}
@@ -249,6 +260,12 @@ export default function DashboardPage() {
           items={allocationsByLiquidity}
           accentA="bg-sky-400"
           accentB="bg-amber-400"
+        />
+        <ConcentrationCard
+          title="Concentração por instituição"
+          items={allocationsByInstitution}
+          accentA="bg-sky-400"
+          accentB="bg-violet-400"
         />
       </div>
     </div>

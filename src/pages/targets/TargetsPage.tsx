@@ -2,7 +2,6 @@ import React from "react";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Button from "@/ui/primitives/Button";
-import Input from "@/ui/primitives/Input";
 import Progress from "@/ui/primitives/Progress";
 import { useAsync } from "@/state/useAsync";
 import { listClasses, upsertClass } from "@/services/classes";
@@ -29,8 +28,14 @@ export default function TargetsPage() {
   const totalClamped = Math.max(0, Math.min(200, total));
   const deltaTo100 = 100 - total;
   const totalTone: "success" | "warning" | "danger" = Math.abs(deltaTo100) < 0.05 ? "success" : total < 100 ? "warning" : "danger";
+  const canSave = total <= 100.05; // allow tiny float drift
 
   async function saveAll() {
+    if (!canSave) {
+      toast.push({ title: "Ajuste os percentuais", message: "O total precisa ser igual ou menor que 100%.", tone: "danger" });
+      return;
+    }
+
     const rows = classes.data ?? [];
     const errors: string[] = [];
 
@@ -86,7 +91,7 @@ export default function TargetsPage() {
             <Badge variant={totalTone === "success" ? "success" : totalTone === "warning" ? "warning" : "danger"}>
               {totalTone === "success" ? "OK" : totalTone === "warning" ? `Falta ${Math.abs(deltaTo100).toFixed(1)}%` : `Excesso ${Math.abs(deltaTo100).toFixed(1)}%`}
             </Badge>
-            <Button onClick={() => void saveAll()} disabled={saving || classes.loading}>
+            <Button onClick={() => void saveAll()} disabled={saving || classes.loading || !canSave}>
               {saving ? "Salvando..." : "Salvar"}
             </Button>
           </div>
@@ -127,12 +132,9 @@ export default function TargetsPage() {
                         −
                       </button>
 
-                      <div className="w-28">
-                        <Input
-                          label="Alvo %"
-                          value={draft[c.id] ?? "0"}
-                          onChange={(e) => setDraft((s) => ({ ...s, [c.id]: e.target.value }))}
-                        />
+                      <div className="flex flex-col items-center justify-center px-2">
+                        <div className="text-[11px] text-slate-400">Alvo %</div>
+                        <Badge variant="info">{pct.toFixed(1)}%</Badge>
                       </div>
 
                       <button
