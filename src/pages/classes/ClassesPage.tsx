@@ -74,7 +74,7 @@ export default function ClassesPage() {
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold">Classes</div>
+          <div className="text-slate-100 font-semibold">Ações</div>
           <div className="text-sm text-slate-400">Organize sua carteira por tipo de ativo.</div>
         </div>
         <Button
