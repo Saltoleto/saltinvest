@@ -6,6 +6,7 @@ import Input from "@/ui/primitives/Input";
 import Badge from "@/ui/primitives/Badge";
 import Modal from "@/ui/primitives/Modal";
 import Select from "@/ui/primitives/Select";
+import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { deleteInvestment, listInvestments, setInvestmentRedeemed } from "@/services/investments";
 import { listGoals } from "@/services/goals";
@@ -83,11 +84,13 @@ export default function InvestmentsPage() {
             className="sm:min-w-[260px]"
           >
             <option value="">Todas</option>
-            {(goals.data ?? []).map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
+            {goals.loading
+              ? null
+              : (goals.data ?? []).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
           </Select>
           <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
@@ -108,7 +111,27 @@ export default function InvestmentsPage() {
 
         <div className="mt-4 grid gap-3">
           {invs.loading ? (
-            <div className="text-sm text-slate-400">Carregando...</div>
+            <>
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="mt-2 h-4 w-64" />
+                    </div>
+                    <div className="text-right shrink-0">
+                      <Skeleton className="h-5 w-24" />
+                      <Skeleton className="mt-2 h-3 w-28" />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex gap-2 justify-end">
+                    <Skeleton className="h-9 w-20" />
+                    <Skeleton className="h-9 w-20" />
+                    <Skeleton className="h-9 w-20" />
+                  </div>
+                </div>
+              ))}
+            </>
           ) : rows.length ? (
             rows.map((r) => {
               const allocated = Number(r.allocated_total ?? 0);

@@ -7,6 +7,7 @@ import { useAsync } from "@/state/useAsync";
 import { listClasses, upsertClass } from "@/services/classes";
 import { useToast } from "@/ui/feedback/Toast";
 import { sum } from "@/lib/validate";
+import Skeleton from "@/ui/primitives/Skeleton";
 
 export default function TargetsPage() {
   const toast = useToast();
@@ -105,7 +106,24 @@ export default function TargetsPage() {
 
       <Card className="p-4">
         {classes.loading ? (
-          <div className="text-sm text-slate-400">Carregando...</div>
+          <div className="grid gap-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="mt-2 h-4 w-28" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-9 w-9 rounded-full" />
+                    <Skeleton className="h-7 w-16" />
+                    <Skeleton className="h-9 w-9 rounded-full" />
+                  </div>
+                </div>
+                <Skeleton className="mt-4 h-3 w-full" />
+              </div>
+            ))}
+          </div>
         ) : (classes.data ?? []).length ? (
           <div className="grid gap-3">
             {(classes.data ?? []).map((c) => {

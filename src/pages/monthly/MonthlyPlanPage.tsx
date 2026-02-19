@@ -3,6 +3,7 @@ import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
 import Input from "@/ui/primitives/Input";
+import Skeleton from "@/ui/primitives/Skeleton";
 import { Icon } from "@/ui/layout/icons";
 import { useAsync } from "@/state/useAsync";
 import { getMonthlyPlanSummary, listMonthlyPlanGoals } from "@/services/monthly";
@@ -60,15 +61,19 @@ export default function MonthlyPlanPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div>
             <div className="text-slate-100 font-semibold">Total sugerido</div>
-            <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
+            {summary.loading ? (
+              <Skeleton className="mt-2 h-10 w-44" />
+            ) : (
+              <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
+            )}
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-400">Aportado no mês</div>
-                <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.contributed)}</div>
+                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.contributed)}</div>}
               </div>
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-400">Restante do mês</div>
-                <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.remaining)}</div>
+                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.remaining)}</div>}
               </div>
             </div>
           </div>
@@ -92,7 +97,21 @@ export default function MonthlyPlanPage() {
 
         <div className="mt-4 grid gap-3">
           {goals.loading ? (
-            <div className="text-sm text-slate-400">Carregando...</div>
+            <>
+              {Array.from({ length: 2 }).map((_, i) => (
+                <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="mt-2 h-4 w-56" />
+                    </div>
+                    <Skeleton className="h-7 w-12" />
+                  </div>
+                  <Skeleton className="mt-4 h-3 w-full" />
+                  <Skeleton className="mt-3 h-3 w-full" />
+                </div>
+              ))}
+            </>
           ) : (goals.data?.length ?? 0) ? (
             (goals.data ?? []).map((g: any) => {
               const row: GoalRow = {

@@ -5,6 +5,7 @@ import Select from "@/ui/primitives/Select";
 import Toggle from "@/ui/primitives/Toggle";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
+import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { listClasses } from "@/services/classes";
 import { listInstitutions } from "@/services/institutions";
@@ -245,7 +246,29 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
   return (
     <div className="grid gap-4">
       {loading ? (
-        <Card className="p-6 text-sm text-slate-400">Carregando formulário...</Card>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="p-4">
+            <Skeleton className="h-4 w-24" />
+            <div className="mt-4 grid gap-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          </Card>
+          <Card className="p-4">
+            <Skeleton className="h-4 w-44" />
+            <div className="mt-4 grid gap-4">
+              <Skeleton className="h-10 w-28" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          </Card>
+        </div>
       ) : (
         <>
           {isRedeemed ? (

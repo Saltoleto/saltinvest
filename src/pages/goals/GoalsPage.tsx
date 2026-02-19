@@ -13,6 +13,7 @@ import { toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/valid
 import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 import { Icon } from "@/ui/layout/icons";
+import Skeleton from "@/ui/primitives/Skeleton";
 
 type FormState = {
   name: string;
@@ -133,7 +134,21 @@ export default function GoalsPage() {
 
       <Card className="p-4">
         {goals.loading ? (
-          <div className="text-sm text-slate-400">Carregando...</div>
+          <div className="grid gap-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="mt-2 h-4 w-64" />
+                  </div>
+                  <Skeleton className="h-9 w-20" />
+                </div>
+                <Skeleton className="mt-4 h-2 w-full" />
+                <Skeleton className="mt-2 h-3 w-12" />
+              </div>
+            ))}
+          </div>
         ) : rows.length ? (
           <div className="grid gap-3">
             {rows.map((g) => {

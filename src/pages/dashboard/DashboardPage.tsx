@@ -3,6 +3,7 @@ import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
 import { Icon } from "@/ui/layout/icons";
+import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
 import { getEquitySummary } from "@/services/analytics";
@@ -114,7 +115,8 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 
 export default function DashboardPage() {
 
-  const [goalsCollapsed, setGoalsCollapsed] = React.useState(false);
+  // Default collapsed for faster perceived load + less visual noise.
+  const [goalsCollapsed, setGoalsCollapsed] = React.useState(true);
 
   const equity = useAsync(() => getEquitySummary(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
@@ -163,12 +165,80 @@ export default function DashboardPage() {
     <div className="grid gap-4 lg:gap-6">
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard title="Patrimônio" value={formatBRL(totalEquity)} subtitle="Soma dos ativos não resgatados" />
-        <StatCard title="Liquidez diária" value={formatBRL(liquidEquity)} subtitle="Disponível sem esperar vencimento" />
-        <StatCard title="Proteção FGC" value={formatBRL(fgcTotal)} subtitle="Montante marcado como coberto" />
+        {equity.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="mt-3 h-8 w-40" />
+            <Skeleton className="mt-3 h-4 w-48" />
+          </Card>
+        ) : (
+          <StatCard title="Patrimônio" value={formatBRL(totalEquity)} subtitle="Soma dos ativos não resgatados" />
+        )}
+
+        {equity.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="mt-3 h-8 w-32" />
+            <Skeleton className="mt-3 h-4 w-52" />
+          </Card>
+        ) : (
+          <StatCard title="Liquidez diária" value={formatBRL(liquidEquity)} subtitle="Disponível sem esperar vencimento" />
+        )}
+
+        {equity.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="mt-3 h-8 w-32" />
+            <Skeleton className="mt-3 h-4 w-44" />
+          </Card>
+        ) : (
+          <StatCard title="Proteção FGC" value={formatBRL(fgcTotal)} subtitle="Montante marcado como coberto" />
+        )}
       </div>
 
-      {/* Goals */}
+      {/* Concentração (cards premium, sem gráficos pesados) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {invs.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-4 w-44" />
+            <div className="mt-3 grid gap-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+            <Skeleton className="mt-3 h-2 w-full" />
+          </Card>
+        ) : (
+          <ConcentrationCard title="Concentração por classe" items={allocationsByClass} accentA="bg-sky-400" accentB="bg-emerald-400" />
+        )}
+
+        {invs.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-4 w-48" />
+            <div className="mt-3 grid gap-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+            <Skeleton className="mt-3 h-2 w-full" />
+          </Card>
+        ) : (
+          <ConcentrationCard title="Concentração por liquidez" items={allocationsByLiquidity} accentA="bg-sky-400" accentB="bg-amber-400" />
+        )}
+
+        {invs.loading ? (
+          <Card className="p-4">
+            <Skeleton className="h-4 w-52" />
+            <div className="mt-3 grid gap-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+            <Skeleton className="mt-3 h-2 w-full" />
+          </Card>
+        ) : (
+          <ConcentrationCard title="Concentração por instituição" items={allocationsByInstitution} accentA="bg-sky-400" accentB="bg-violet-400" />
+        )}
+      </div>
+
+      {/* Goals (last) */}
       <Card className="p-4">
         <SectionHeader
           title="Progresso das metas"
@@ -185,62 +255,53 @@ export default function DashboardPage() {
         />
 
         {goalsCollapsed ? null : (
-        <div className="mt-3 grid gap-3">
-          {goals.loading ? (
-            <div className="text-sm text-slate-400">Carregando metas...</div>
-          ) : goalRows.length ? (
-            goalRows.map((g) => (
-              <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-slate-100 font-medium">{g.name}</div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
+          <div className="mt-3 grid gap-3">
+            {goals.loading ? (
+              <>
+                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="mt-2 h-4 w-64" />
+                  <Skeleton className="mt-4 h-2 w-full" />
+                  <Skeleton className="mt-2 h-3 w-16" />
+                </div>
+                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="mt-2 h-4 w-56" />
+                  <Skeleton className="mt-4 h-2 w-full" />
+                  <Skeleton className="mt-2 h-3 w-16" />
+                </div>
+              </>
+            ) : goalRows.length ? (
+              goalRows.map((g) => (
+                <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-slate-100 font-medium">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-400">
+                        {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
+                      </div>
                     </div>
+                    <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
+                      {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? (
+                        <span className="inline-flex items-center" title="No plano" aria-label="No plano">
+                          <Icon name="spark" className="h-4 w-4" />
+                          <span className="sr-only">No plano</span>
+                        </span>
+                      ) : "Fora do plano"}
+                    </Badge>
                   </div>
-                  <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
-                    {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? (
-                      <span className="inline-flex items-center" title="No plano" aria-label="No plano">
-                        <Icon name="spark" className="h-4 w-4" />
-                        <span className="sr-only">No plano</span>
-                      </span>
-                    ) : "Fora do plano"}
-                  </Badge>
+                  <div className="mt-3">
+                    <Progress value={Number(g.percent_progress) || 0} />
+                    <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
+                  </div>
                 </div>
-                <div className="mt-3">
-                  <Progress value={Number(g.percent_progress) || 0} />
-                  <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
-          )}
-        </div>
+              ))
+            ) : (
+              <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
+            )}
+          </div>
         )}
       </Card>
-
-      {/* Concentração (cards premium, sem gráficos pesados) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <ConcentrationCard
-          title="Concentração por classe"
-          items={allocationsByClass}
-          accentA="bg-sky-400"
-          accentB="bg-emerald-400"
-        />
-        <ConcentrationCard
-          title="Concentração por liquidez"
-          items={allocationsByLiquidity}
-          accentA="bg-sky-400"
-          accentB="bg-amber-400"
-        />
-        <ConcentrationCard
-          title="Concentração por instituição"
-          items={allocationsByInstitution}
-          accentA="bg-sky-400"
-          accentB="bg-violet-400"
-        />
-      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { listInstitutions, upsertInstitution, deleteInstitution } from "@/servic
 import { useToast } from "@/ui/feedback/Toast";
 import { requireNonEmpty } from "@/lib/validate";
 import { Icon } from "@/ui/layout/icons";
+import Skeleton from "@/ui/primitives/Skeleton";
 
 type FormState = { id?: string; name: string };
 
@@ -86,7 +87,17 @@ export default function InstitutionsPage() {
 
       <Card className="p-4">
         {inst.loading ? (
-          <div className="text-sm text-slate-400">Carregando...</div>
+          <div className="grid gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+                <Skeleton className="h-4 w-44" />
+                <div className="flex gap-2">
+                  <Skeleton className="h-9 w-20" />
+                  <Skeleton className="h-9 w-20" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : rows.length ? (
           <div className="grid gap-2">
             {rows.map((c) => (

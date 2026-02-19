@@ -18,6 +18,12 @@ body {
     #0B1220;
 }
 
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 * {
   -webkit-tap-highlight-color: transparent;
 }
