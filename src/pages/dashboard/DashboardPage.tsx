@@ -2,9 +2,10 @@ import React from "react";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
+import { Icon } from "@/ui/layout/icons";
 import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
-import { getEquitySummary, getFgcExposure } from "@/services/analytics";
+import { getEquitySummary } from "@/services/analytics";
 import { listGoalsEvolution } from "@/services/goals";
 import { listInvestments } from "@/services/investments";
 
@@ -117,7 +118,6 @@ export default function DashboardPage() {
 
   const equity = useAsync(() => getEquitySummary(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
-  const fgc = useAsync(() => getFgcExposure(), []);
   const invs = useAsync(() => listInvestments(), []);
 
   const allocationsByClass = React.useMemo(() => {
@@ -176,9 +176,10 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setGoalsCollapsed((v) => !v)}
-              className="text-sm text-sky-300 hover:text-sky-200"
+              className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+              aria-label={goalsCollapsed ? "Expandir" : "Recolher"}
             >
-              {goalsCollapsed ? "Expandir" : "Recolher"}
+              {goalsCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
             </button>
           }
         />
@@ -212,39 +213,6 @@ export default function DashboardPage() {
           )}
         </div>
         )}
-      </Card>
-
-      {/* FGC */}
-      <Card className="p-4">
-        <SectionHeader title="Exposição ao FGC por instituição" />
-        <div className="mt-3 overflow-auto">
-          {fgc.loading ? (
-            <div className="text-sm text-slate-400">Carregando...</div>
-          ) : (fgc.data ?? []).length ? (
-            <table className="w-full text-sm">
-              <thead className="text-slate-400">
-                <tr className="border-b border-white/10">
-                  <th className="text-left py-2 pr-4 font-medium">Instituição</th>
-                  <th className="text-right py-2 px-2 font-medium">Coberto</th>
-                  <th className="text-right py-2 px-2 font-medium">Não coberto</th>
-                  <th className="text-right py-2 pl-2 font-medium">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(fgc.data ?? []).map((r) => (
-                  <tr key={r.institution_name} className="border-b border-white/5">
-                    <td className="py-2 pr-4 text-slate-200">{r.institution_name}</td>
-                    <td className="py-2 px-2 text-right text-slate-300">{formatBRL(Number(r.covered_amount ?? 0))}</td>
-                    <td className="py-2 px-2 text-right text-slate-300">{formatBRL(Number(r.uncovered_amount ?? 0))}</td>
-                    <td className="py-2 pl-2 text-right text-slate-100 font-medium">{formatBRL(Number(r.total_in_institution ?? 0))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <EmptyState title="Sem investimentos em instituições" subtitle="Vincule investimentos a instituições e marque cobertura FGC quando aplicável." />
-          )}
-        </div>
       </Card>
 
       {/* Concentração (cards premium, sem gráficos pesados) */}

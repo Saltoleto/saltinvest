@@ -5,7 +5,7 @@ export function Icon({
   name,
   className
 }: {
-  name: "grid" | "wallet" | "target" | "pie" | "layers" | "bank" | "gear" | "spark" | "logout" | "plus" | "check" | "x";
+  name: "grid" | "wallet" | "target" | "pie" | "layers" | "bank" | "gear" | "spark" | "logout" | "plus" | "check" | "x" | "chevronUp" | "chevronDown";
   className?: string;
 }) {
   const common = cn("inline-block", className);
@@ -95,7 +95,21 @@ export function Icon({
           <path d="M20 6 9 17l-5-5" />
         </svg>
       );
-    case "x":
+    
+    case "chevronUp":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m18 15-6-6-6 6" />
+        </svg>
+      );
+    case "chevronDown":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      );
+
+case "x":
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M18 6 6 18M6 6l12 12" />

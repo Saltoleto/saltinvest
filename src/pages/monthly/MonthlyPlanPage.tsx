@@ -56,14 +56,14 @@ export default function MonthlyPlanPage() {
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div>
             <div className="text-slate-100 font-semibold">Total sugerido</div>
             <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
             <div className="mt-2 text-sm text-slate-400">
               Soma dos aportes recomendados para as metas marcadas como <span className="text-sky-200">Plano do mês</span>.
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-400">Aportado no mês</div>
                 <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.contributed)}</div>
@@ -72,14 +72,10 @@ export default function MonthlyPlanPage() {
                 <div className="text-xs text-slate-400">Restante do mês</div>
                 <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.remaining)}</div>
               </div>
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
-                <div className="text-xs text-slate-400">Metas no plano</div>
-                <div className="mt-1 text-slate-100 font-semibold">{goals.data?.length ?? 0}</div>
-              </div>
             </div>
           </div>
 
-          <div className="min-w-[220px]">
+          <div className="w-full sm:min-w-[220px] sm:w-auto">
             <Input
               label="Filtrar por mês"
               type="month"
@@ -118,13 +114,17 @@ export default function MonthlyPlanPage() {
               const percent = g.target_value > 0 ? (contributed / Number(g.target_value)) * 100 : 0;
               return (
                 <div key={g.goal_id} className={"rounded-xl2 border border-white/10 bg-white/5 p-4 " + cardEmphasisClass(status.variant)}>
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                     <div>
                       <div className="text-slate-100 font-medium">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-400">
-                        Sugestão: <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês • Aportado no mês: {formatBRL(Number(g.contributed_this_month))} • Restante do mês: {formatBRL(Number(g.remaining_this_month))}
+                        <span className="block sm:inline">Sugestão: <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês</span>
+                        <span className="hidden sm:inline"> • </span>
+                        <span className="block sm:inline">Aportado no mês: {formatBRL(Number(g.contributed_this_month))}</span>
+                        <span className="hidden sm:inline"> • </span>
+                        <span className="block sm:inline">Restante do mês: {formatBRL(Number(g.remaining_this_month))}</span>
                       </div>
-                      <div className="mt-1 text-xs text-slate-500">Restante total: {formatBRL(Number(g.remaining_value))} • {Number(g.months_remaining)} mês(es) até a meta</div>
+                      <div className="mt-1 text-xs text-slate-500 hidden sm:block">Restante total: {formatBRL(Number(g.remaining_value))} • {Number(g.months_remaining)} mês(es) até a meta</div>
                     </div>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </div>
