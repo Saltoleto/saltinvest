@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../utils/cn";
 import Button from "./Button";
 
@@ -23,10 +24,20 @@ export default function Modal({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Prevent background scroll while modal is open.
+  React.useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 py-6">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative w-full max-w-5xl max-h-[85vh] rounded-xl2 border border-white/10 bg-slate-950/85 backdrop-blur-md shadow-soft overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
@@ -47,6 +58,7 @@ export default function Modal({
           {footer}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

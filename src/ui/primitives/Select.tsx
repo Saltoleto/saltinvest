@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../utils/cn";
 
 type Props = React.SelectHTMLAttributes<HTMLSelectElement> & {
@@ -41,6 +42,8 @@ function useOnClickOutside(refs: React.RefObject<HTMLElement>[], onOutside: () =
   }, [refs, onOutside]);
 }
 
+type PopPos = { left: number; top: number; width: number };
+
 export default function Select({
   label,
   hint,
@@ -68,8 +71,10 @@ export default function Select({
   const [active, setActive] = useState(0);
 
   const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [pos, setPos] = useState<PopPos | null>(null);
 
   useOnClickOutside([wrapRef, popRef], () => setOpen(false));
 
@@ -79,15 +84,38 @@ export default function Select({
     return options.filter((o) => o.label.toLowerCase().includes(qq));
   }, [options, q]);
 
+  function syncPos() {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({
+      left: Math.round(r.left),
+      top: Math.round(r.bottom),
+      width: Math.round(r.width)
+    });
+  }
+
   useEffect(() => {
     if (!open) {
       setQ("");
+      setPos(null);
       return;
     }
+    syncPos();
     // Focus search when opening
     setTimeout(() => searchRef.current?.focus(), 0);
     const idx = Math.max(0, filtered.findIndex((o) => o.value === current));
     setActive(idx === -1 ? 0 : idx);
+
+    function onScrollOrResize() {
+      syncPos();
+    }
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -97,7 +125,7 @@ export default function Select({
       // minimal synthetic event to satisfy existing handlers
       (onChange as any)({
         target: { value: next, name },
-        currentTarget: { value: next, name },
+        currentTarget: { value: next, name }
       });
     }
   }
@@ -139,37 +167,14 @@ export default function Select({
     }
   }
 
-  return (
-    <label className={cn("block", className)}>
-      {label ? <div className="text-sm text-slate-200 mb-2">{label}</div> : null}
-
-      {/* Hidden input to keep native forms happy */}
-      {name ? <input type="hidden" name={name} value={current} required={required} /> : null}
-
-      <div ref={wrapRef} className="relative" onKeyDown={onKeyDown}>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          className={cn(
-            "w-full h-11 rounded-xl2 bg-white/5 border border-white/10 px-3 text-left text-slate-100",
-            "focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/30 transition",
-            "flex items-center justify-between gap-3",
-            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-white/7",
-            error ? "border-red-400/40 focus:ring-red-400/30" : ""
-          )}
-          onClick={() => !disabled && setOpen((v) => !v)}
-        >
-          <span className={cn("truncate", !selected?.label ? "text-slate-400" : "")}>{selected?.label || "Selecionar"}</span>
-          <span className={cn("text-slate-300 transition", open ? "rotate-180" : "")}>▾</span>
-        </button>
-
-        {open ? (
+  const popover =
+    open && pos
+      ? createPortal(
           <div
             ref={popRef}
+            style={{ left: pos.left, top: pos.top + 8, width: pos.width, position: "fixed" }}
             className={cn(
-              "absolute z-50 mt-2 w-full rounded-2xl border border-white/10",
+              "z-[9999] rounded-2xl border border-white/10",
               "bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden"
             )}
             role="listbox"
@@ -217,10 +222,40 @@ export default function Select({
                 })
               )}
             </div>
+          </div>,
+          document.body
+        )
+      : null;
 
-            {/* Intentionally no native <select>: this is a fully custom premium dropdown */}
-          </div>
-        ) : null}
+  return (
+    <label className={cn("block", className)}>
+      {label ? <div className="text-sm text-slate-200 mb-2">{label}</div> : null}
+
+      {/* Hidden input to keep native forms happy */}
+      {name ? <input type="hidden" name={name} value={current} required={required} /> : null}
+
+      <div ref={wrapRef} className="relative" onKeyDown={onKeyDown}>
+        <button
+          ref={btnRef}
+          {...rest}
+          type="button"
+          disabled={disabled}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          className={cn(
+            "w-full h-11 rounded-xl2 bg-white/5 border border-white/10 px-3 text-left text-slate-100",
+            "focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/30 transition",
+            "flex items-center justify-between gap-3",
+            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-white/7",
+            error ? "border-red-400/40 focus:ring-red-400/30" : ""
+          )}
+          onClick={() => !disabled && setOpen((v) => !v)}
+        >
+          <span className={cn("truncate", !selected?.label ? "text-slate-400" : "")}>{selected?.label || "Selecionar"}</span>
+          <span className={cn("text-slate-300 transition", open ? "rotate-180" : "")}>▾</span>
+        </button>
+
+        {popover}
       </div>
 
       {error ? <div className="mt-2 text-sm text-red-300">{error}</div> : hint ? <div className="mt-2 text-sm text-slate-400">{hint}</div> : null}

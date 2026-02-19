@@ -1,21 +1,9 @@
 import React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import { Icon } from "@/ui/layout/icons";
-import Button from "@/ui/primitives/Button";
-import Modal from "@/ui/primitives/Modal";
-import { useAuth } from "@/state/auth/AuthContext";
 
 export default function SettingsPage() {
-  const nav = useNavigate();
-  const { signOut, user } = useAuth();
-  const [confirmLogout, setConfirmLogout] = React.useState(false);
-
-  async function doLogout() {
-    await signOut();
-    nav("/login");
-  }
-
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
@@ -63,53 +51,6 @@ export default function SettingsPage() {
           </Link>
         </div>
       </Card>
-
-      <Card className="p-4">
-        <div className="text-slate-100 font-semibold">Instalação</div>
-        <div className="mt-2 text-sm text-slate-400 grid gap-2">
-          <div>
-            • No Chrome/Edge: menu ⋮ → <span className="text-slate-200">Instalar app</span>.
-          </div>
-          <div>
-            • No iOS Safari: Compartilhar → <span className="text-slate-200">Adicionar à Tela de Início</span>.
-          </div>
-        </div>
-      </Card>
-    
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-slate-100 font-semibold">Sessão</div>
-            <div className="mt-1 text-sm text-slate-400">Saia com segurança da sua conta.</div>
-          </div>
-          <Button variant="secondary" onClick={() => setConfirmLogout(true)} className="shrink-0">
-            <Icon name="logout" className="h-4 w-4" />
-            <span className="hidden sm:inline">Sair</span>
-          </Button>
-        </div>
-      </Card>
-
-      <Modal
-        open={confirmLogout}
-        title="Sair do SaltInvest"
-        onClose={() => setConfirmLogout(false)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setConfirmLogout(false)}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={doLogout}>
-              Sair
-            </Button>
-          </>
-        }
-      >
-        <div className="text-sm text-slate-300">
-          Você está conectado como <span className="text-slate-100 font-medium">{user?.email ?? "—"}</span>.
-          <div className="mt-2 text-slate-400">Tem certeza que deseja encerrar a sessão?</div>
-        </div>
-      </Modal>
-
     </div>
   );
 }

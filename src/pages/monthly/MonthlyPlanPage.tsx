@@ -3,6 +3,7 @@ import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
 import Input from "@/ui/primitives/Input";
+import { Icon } from "@/ui/layout/icons";
 import { useAsync } from "@/state/useAsync";
 import { getMonthlyPlanSummary, listMonthlyPlanGoals } from "@/services/monthly";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
@@ -60,9 +61,6 @@ export default function MonthlyPlanPage() {
           <div>
             <div className="text-slate-100 font-semibold">Total sugerido</div>
             <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
-            <div className="mt-2 text-sm text-slate-400">
-              Soma dos aportes recomendados para as metas marcadas como <span className="text-sky-200">Plano do mês</span>.
-            </div>
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-slate-400">Aportado no mês</div>
@@ -118,15 +116,19 @@ export default function MonthlyPlanPage() {
                     <div>
                       <div className="text-slate-100 font-medium">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-400">
-                        <span className="block sm:inline">Sugestão: <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês</span>
-                        <span className="hidden sm:inline"> • </span>
-                        <span className="block sm:inline">Aportado no mês: {formatBRL(Number(g.contributed_this_month))}</span>
-                        <span className="hidden sm:inline"> • </span>
-                        <span className="block sm:inline">Restante do mês: {formatBRL(Number(g.remaining_this_month))}</span>
+                        Sugestão: <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
                       </div>
-                      <div className="mt-1 text-xs text-slate-500 hidden sm:block">Restante total: {formatBRL(Number(g.remaining_value))} • {Number(g.months_remaining)} mês(es) até a meta</div>
                     </div>
-                    <Badge variant={status.variant}>{status.label}</Badge>
+                    <Badge variant={status.variant} title={status.label} aria-label={status.label}>
+                      {status.label === "Em dia" ? (
+                        <span className="inline-flex items-center">
+                          <Icon name="check" className="h-4 w-4" />
+                          <span className="sr-only">Em dia</span>
+                        </span>
+                      ) : (
+                        status.label
+                      )}
+                    </Badge>
                   </div>
 
                   <div className="mt-3">

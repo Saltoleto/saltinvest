@@ -199,7 +199,12 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
-                    {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? "No plano" : "Fora do plano"}
+                    {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? (
+                      <span className="inline-flex items-center" title="No plano" aria-label="No plano">
+                        <Icon name="spark" className="h-4 w-4" />
+                        <span className="sr-only">No plano</span>
+                      </span>
+                    ) : "Fora do plano"}
                   </Badge>
                 </div>
                 <div className="mt-3">
