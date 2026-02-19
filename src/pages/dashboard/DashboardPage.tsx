@@ -144,65 +144,6 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="p-4">
-          <SectionHeader title="Concentração por classe" />
-          <div className="mt-3 h-[260px]">
-            {allocationsByClass.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie dataKey="value" data={allocationsByClass} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
-                    {allocationsByClass.map((_, i) => (
-                      <Cell key={i} fill={["#22c55e","#60a5fa","#fbbf24","#a78bfa","#f472b6","#fb7185","#34d399","#38bdf8"][i % 8]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="Sem dados" subtitle="Cadastre investimentos e associe classes para ver a concentração." />
-            )}
-          </div>
-          <div className="mt-3 grid gap-2">
-            {allocationsByClass.slice(0, 4).map((x) => (
-              <div key={x.name} className="flex items-center justify-between text-sm">
-                <div className="text-slate-200">{x.name}</div>
-                <div className="text-slate-300">{formatBRL(x.value)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="p-4">
-          <SectionHeader title="Concentração por liquidez" />
-          <div className="mt-3 h-[260px]">
-            {allocationsByLiquidity.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie dataKey="value" data={allocationsByLiquidity} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
-                    {allocationsByLiquidity.map((_, i) => (
-                      <Cell key={i} fill={["#60a5fa","#22c55e","#fbbf24","#a78bfa"][i % 4]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState title="Sem dados" subtitle="Cadastre investimentos com tipo de liquidez." />
-            )}
-          </div>
-          <div className="mt-3 grid gap-2">
-            {allocationsByLiquidity.map((x) => (
-              <div key={x.name} className="flex items-center justify-between text-sm">
-                <div className="text-slate-200">{x.name}</div>
-                <div className="text-slate-300">{formatBRL(x.value)}</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
       {/* Goals */}
       <Card className="p-4">
         <SectionHeader title="Progresso das metas" />
@@ -267,6 +208,65 @@ export default function DashboardPage() {
           )}
         </div>
       </Card>
+
+      {/* Charts (mover para o final para priorizar resumo + ações) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="p-4">
+          <SectionHeader title="Concentração por classe" />
+          <div className="mt-3 h-[260px]">
+            {allocationsByClass.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie dataKey="value" data={allocationsByClass} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
+                    {allocationsByClass.map((_, i) => (
+                      <Cell key={i} fill={["#22c55e", "#60a5fa", "#fbbf24", "#a78bfa", "#f472b6", "#fb7185", "#34d399", "#38bdf8"][i % 8]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState title="Sem dados" subtitle="Cadastre investimentos e associe classes para ver a concentração." />
+            )}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {allocationsByClass.slice(0, 4).map((x) => (
+              <div key={x.name} className="flex items-center justify-between text-sm">
+                <div className="text-slate-200">{x.name}</div>
+                <div className="text-slate-300">{formatBRL(x.value)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-4">
+          <SectionHeader title="Concentração por liquidez" />
+          <div className="mt-3 h-[260px]">
+            {allocationsByLiquidity.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie dataKey="value" data={allocationsByLiquidity} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
+                    {allocationsByLiquidity.map((_, i) => (
+                      <Cell key={i} fill={["#60a5fa", "#22c55e", "#fbbf24", "#a78bfa"][i % 4]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyState title="Sem dados" subtitle="Cadastre investimentos com tipo de liquidez." />
+            )}
+          </div>
+          <div className="mt-3 grid gap-2">
+            {allocationsByLiquidity.map((x) => (
+              <div key={x.name} className="flex items-center justify-between text-sm">
+                <div className="text-slate-200">{x.name}</div>
+                <div className="text-slate-300">{formatBRL(x.value)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

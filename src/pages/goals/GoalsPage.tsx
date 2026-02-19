@@ -10,6 +10,7 @@ import { useAsync } from "@/state/useAsync";
 import { listGoals, listGoalsEvolution, upsertGoal, deleteGoal } from "@/services/goals";
 import { formatBRL, formatDateBR, clamp } from "@/lib/format";
 import { toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/validate";
+import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 import { Icon } from "@/ui/layout/icons";
 
@@ -52,7 +53,7 @@ export default function GoalsPage() {
     setForm({
       id: row.id,
       name: row.name,
-      target_value: String(row.target_value ?? ""),
+      target_value: row.target_value != null ? formatBRL(Number(row.target_value)) : "",
       target_date: row.target_date,
       is_monthly_plan: !!row.is_monthly_plan
     });
@@ -196,10 +197,11 @@ export default function GoalsPage() {
 
           <Input
             label="Valor alvo (R$)"
-            placeholder="Ex: 10.000"
+            placeholder="R$ 0,00"
+            inputMode="numeric"
             value={form.target_value}
             error={errs.target_value}
-            onChange={(e) => setForm((s) => ({ ...s, target_value: e.target.value }))}
+            onChange={(e) => setForm((s) => ({ ...s, target_value: maskBRLCurrencyInput(e.target.value) }))}
           />
 
           <Input

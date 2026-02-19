@@ -12,8 +12,10 @@ import { listClasses } from "@/services/classes";
 import { listInstitutions } from "@/services/institutions";
 import { listGoalsEvolution } from "@/services/goals";
 import { getInvestment, listAllocationsByInvestment, saveInvestmentWithAllocations } from "@/services/investments";
+import { listMonthlyPlanGoals } from "@/services/monthly";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
 import { sum, toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/validate";
+import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 
 export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }) {
@@ -25,6 +27,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   const classes = useAsync(() => listClasses(), []);
   const inst = useAsync(() => listInstitutions(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
+  const monthly = useAsync(() => listMonthlyPlanGoals(), []);
   const existing = useAsync(() => (mode === "edit" && investmentId ? getInvestment(investmentId) : Promise.resolve(null)), [mode, investmentId]);
   const existingAlloc = useAsync(() => (mode === "edit" && investmentId ? listAllocationsByInvestment(investmentId) : Promise.resolve([])), [mode, investmentId]);
 
@@ -45,7 +48,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     if (!existing.data) return;
 
     setName(existing.data.name ?? "");
-    setTotalValue(String(existing.data.total_value ?? ""));
+    setTotalValue(existing.data.total_value != null ? formatBRL(Number(existing.data.total_value)) : "");
     setClassId(existing.data.class_id ?? "");
     setInstitutionId(existing.data.institution_id ?? "");
     setLiquidity((existing.data.liquidity_type as any) || "diaria");
@@ -57,12 +60,24 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     if (mode !== "edit") return;
     const map: Record<string, string> = {};
     for (const a of existingAlloc.data ?? []) {
-      map[a.goal_id] = String(a.amount ?? 0);
+      map[a.goal_id] = a.amount != null ? formatBRL(Number(a.amount)) : "";
     }
     setAlloc(map);
   }, [mode, existingAlloc.data]);
 
   const total = toNumberBRL(totalValue);
+
+  const monthlyByGoal = React.useMemo(() => {
+    const map: Record<string, { suggested: number; remaining: number }> = {};
+    for (const r of monthly.data ?? []) {
+      const gid = (r as any).goal_id as string;
+      map[gid] = {
+        suggested: Number((r as any).suggested_this_month) || 0,
+        remaining: Number((r as any).remaining_this_month) || 0
+      };
+    }
+    return map;
+  }, [monthly.data]);
   const allocations = React.useMemo(() => {
     const rows = goals.data ?? [];
     return rows.map((g) => ({
@@ -71,9 +86,10 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
       percent_progress: Number(g.percent_progress) || 0,
       is_monthly_plan: !!g.is_monthly_plan,
       days_remaining: Number(g.days_remaining) || 0,
-      amount: toNumberBRL(alloc[g.goal_id] ?? "0")
+      amount: toNumberBRL(alloc[g.goal_id] ?? "0"),
+      suggested: monthlyByGoal[g.goal_id]?.remaining ?? 0
     }));
-  }, [goals.data, alloc]);
+  }, [goals.data, alloc, monthlyByGoal]);
 
   const allocatedTotal = sum(allocations.map((x) => x.amount));
   const remainingToAllocate = Math.max(0, total - allocatedTotal);
@@ -84,7 +100,8 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   }
 
   function autoDistribute() {
-    // distribute remaining equally among goals in monthly plan
+    // Premium: preenche com o "restante sugerido do mês" por meta (VIEW),
+    // e caso ultrapasse o total do investimento, escala proporcionalmente.
     const candidates = allocations.filter((a) => a.is_monthly_plan);
     if (!candidates.length) {
       toast.push({ title: "Sem metas no plano", message: "Ative “Plano do mês” em uma meta para usar auto-distribuição.", tone: "warning" });
@@ -94,11 +111,34 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
       toast.push({ title: "Defina o valor do investimento", tone: "warning" });
       return;
     }
-    const each = total / candidates.length;
     const next: Record<string, string> = { ...alloc };
-    for (const c of candidates) next[c.goal_id] = String(each.toFixed(2));
+
+    const suggestedSum = sum(candidates.map((c) => Math.max(0, c.suggested || 0)));
+    if (suggestedSum > 0) {
+      const scale = suggestedSum > total ? total / suggestedSum : 1;
+      for (const c of candidates) {
+        const v = Math.max(0, (c.suggested || 0) * scale);
+        next[c.goal_id] = v ? formatBRL(v) : "";
+      }
+    } else {
+      // fallback: distribuição igualitária
+      const each = total / candidates.length;
+      for (const c of candidates) next[c.goal_id] = each ? formatBRL(each) : "";
+    }
     setAlloc(next);
     toast.push({ title: "Distribuição automática aplicada", tone: "success" });
+  }
+
+  function applySuggested(goalId: string) {
+    const s = monthlyByGoal[goalId];
+    if (!s) return;
+    const current = toNumberBRL(alloc[goalId] ?? "0");
+    const desired = Math.max(0, s.remaining);
+
+    // Se o usuário já informou o valor total, respeitamos o limite do investimento.
+    const room = total > 0 ? Math.max(0, total - (allocatedTotal - current)) : desired;
+    const value = total > 0 ? Math.min(desired, room) : desired;
+    setAllocation(goalId, value ? formatBRL(value) : "");
   }
 
   async function onSave() {
@@ -138,7 +178,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     }
   }
 
-  const loading = classes.loading || inst.loading || goals.loading || (mode === "edit" && (existing.loading || existingAlloc.loading));
+  const loading = classes.loading || inst.loading || goals.loading || monthly.loading || (mode === "edit" && (existing.loading || existingAlloc.loading));
 
   return (
     <div className="grid gap-4 lg:gap-6">
@@ -167,7 +207,14 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
               <div className="mt-4 grid gap-4">
                 <Input label="Nome" placeholder="Ex: CDB 12% 2028" value={name} error={errs.name} onChange={(e) => setName(e.target.value)} />
 
-                <Input label="Valor total (R$)" placeholder="Ex: 1500" value={totalValue} error={errs.total} onChange={(e) => setTotalValue(e.target.value)} />
+                <Input
+                  label="Valor total (R$)"
+                  placeholder="R$ 0,00"
+                  inputMode="numeric"
+                  value={totalValue}
+                  error={errs.total}
+                  onChange={(e) => setTotalValue(maskBRLCurrencyInput(e.target.value))}
+                />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Classe" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -241,13 +288,28 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
                         <div className="mt-1 text-xs text-slate-400">
                           Progresso: {formatPercent(g.percent_progress)} • {g.days_remaining} dia(s) restantes
                         </div>
+                        {g.is_monthly_plan && g.suggested > 0 ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-slate-400">Sugerido agora:</span>
+                            <button
+                              type="button"
+                              onClick={() => applySuggested(g.goal_id)}
+                              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-100 hover:bg-white/10 active:bg-white/15"
+                              title="Preencher com o valor sugerido do mês"
+                            >
+                              {formatBRL(g.suggested)}
+                              <span className="text-slate-300/80">• aplicar</span>
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                       <div className="w-32">
                         <Input
                           label="Aporte (R$)"
-                          placeholder="0"
+                          placeholder={g.is_monthly_plan && g.suggested > 0 ? formatBRL(g.suggested) : "R$ 0,00"}
+                          inputMode="numeric"
                           value={alloc[g.goal_id] ?? ""}
-                          onChange={(e) => setAllocation(g.goal_id, e.target.value)}
+                          onChange={(e) => setAllocation(g.goal_id, maskBRLCurrencyInput(e.target.value))}
                         />
                       </div>
                     </div>

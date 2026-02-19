@@ -30,14 +30,14 @@ function getOptions(children: React.ReactNode): Opt[] {
 
 function useOnClickOutside(refs: React.RefObject<HTMLElement>[], onOutside: () => void) {
   useEffect(() => {
-    function onDown(e: PointerEvent) {
+    function onDown(e: MouseEvent) {
       const t = e.target as Node | null;
       if (!t) return;
       const inside = refs.some((r) => r.current && r.current.contains(t));
       if (!inside) onOutside();
     }
-    document.addEventListener("pointerdown", onDown as any);
-    return () => document.removeEventListener("pointerdown", onDown as any);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [refs, onOutside]);
 }
 
@@ -69,7 +69,6 @@ export default function Select({
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useOnClickOutside([wrapRef, popRef], () => setOpen(false));
@@ -107,8 +106,6 @@ export default function Select({
     if (opt.disabled) return;
     emitChange(opt.value);
     setOpen(false);
-    // Restore focus for keyboard + premium feel
-    requestAnimationFrame(() => triggerRef.current?.focus());
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -151,7 +148,6 @@ export default function Select({
 
       <div ref={wrapRef} className="relative" onKeyDown={onKeyDown}>
         <button
-          ref={triggerRef}
           type="button"
           disabled={disabled}
           aria-haspopup="listbox"
@@ -212,12 +208,7 @@ export default function Select({
                         isSel ? "border border-sky-400/20" : "border border-transparent"
                       )}
                       onMouseEnter={() => setActive(idx)}
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        pick(opt);
-                      }}
-                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => pick(opt)}
                     >
                       <span className="truncate text-slate-100">{opt.label}</span>
                       {isSel ? <span className="text-sky-300">✓</span> : <span className="text-transparent">✓</span>}
