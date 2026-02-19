@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { requireUserId } from "./db";
+import { cacheFetch, cacheInvalidate } from "./cache";
+
+const TTL_MS = 20_000;
+const k = (uid: string, suffix: string) => `u:${uid}:goals:${suffix}`;
 
 // Legacy shapes used across the UI.
 export type GoalRow = {
@@ -43,24 +47,26 @@ function diffDays(dateISO: string): number {
 
 export async function listGoals(): Promise<GoalRow[]> {
   const uid = await requireUserId();
-  const { data, error } = await supabase
-    .from("objetivos")
-    .select("id, usuario_id, nome, valor_alvo, data_inicio, data_alvo, participa_plano_mensal, criado_em")
-    .eq("usuario_id", uid)
-    .order("data_alvo", { ascending: true });
-  if (error) throw error;
+  return cacheFetch(k(uid, "list"), TTL_MS, async () => {
+    const { data, error } = await supabase
+      .from("objetivos")
+      .select("id, usuario_id, nome, valor_alvo, data_inicio, data_alvo, participa_plano_mensal, criado_em")
+      .eq("usuario_id", uid)
+      .order("data_alvo", { ascending: true });
+    if (error) throw error;
 
-  return (data ?? []).map((r: any) => ({
-    id: String(r.id),
-    user_id: String(r.usuario_id),
-    name: String(r.nome),
-    target_value: Number(r.valor_alvo) || 0,
-    start_date: String(r.data_inicio),
-    target_date: String(r.data_alvo),
-    is_monthly_plan: !!r.participa_plano_mensal,
-    created_at: r.criado_em ?? null,
-    updated_at: null
-  }));
+    return (data ?? []).map((r: any) => ({
+      id: String(r.id),
+      user_id: String(r.usuario_id),
+      name: String(r.nome),
+      target_value: Number(r.valor_alvo) || 0,
+      start_date: String(r.data_inicio),
+      target_date: String(r.data_alvo),
+      is_monthly_plan: !!r.participa_plano_mensal,
+      created_at: r.criado_em ?? null,
+      updated_at: null
+    }));
+  });
 }
 
 export async function upsertGoal(payload: {
@@ -87,52 +93,58 @@ export async function upsertGoal(payload: {
   };
   const { error } = await supabase.from("objetivos").insert(row);
   if (error) throw error;
+
+  cacheInvalidate(k(uid, ""));
 }
 
 export async function deleteGoal(id: string): Promise<void> {
   const uid = await requireUserId();
   const { error } = await supabase.from("objetivos").delete().eq("id", id).eq("usuario_id", uid);
   if (error) throw error;
+
+  cacheInvalidate(k(uid, ""));
 }
 
 export async function listGoalsEvolution(): Promise<GoalEvolutionRow[]> {
   const uid = await requireUserId();
 
-  const { data: goals, error: e1 } = await supabase
-    .from("objetivos")
-    .select("id, nome, valor_alvo, data_alvo, participa_plano_mensal")
-    .eq("usuario_id", uid);
-  if (e1) throw e1;
+  return cacheFetch(k(uid, "evolution"), TTL_MS, async () => {
+    const { data: goals, error: e1 } = await supabase
+      .from("objetivos")
+      .select("id, nome, valor_alvo, data_alvo, participa_plano_mensal")
+      .eq("usuario_id", uid);
+    if (e1) throw e1;
 
-  const ids = (goals ?? []).map((g: any) => String(g.id));
-  const sums: Record<string, number> = {};
-  if (ids.length) {
-    const { data: aportes, error: e2 } = await supabase
-      .from("aportes")
-      .select("objetivo_id, valor_aporte")
-      .eq("usuario_id", uid)
-      .in("objetivo_id", ids);
-    if (e2) throw e2;
-    for (const a of aportes ?? []) {
-      const gid = String((a as any).objetivo_id);
-      sums[gid] = (sums[gid] ?? 0) + (Number((a as any).valor_aporte) || 0);
+    const ids = (goals ?? []).map((g: any) => String(g.id));
+    const sums: Record<string, number> = {};
+    if (ids.length) {
+      const { data: aportes, error: e2 } = await supabase
+        .from("aportes")
+        .select("objetivo_id, valor_aporte")
+        .eq("usuario_id", uid)
+        .in("objetivo_id", ids);
+      if (e2) throw e2;
+      for (const a of aportes ?? []) {
+        const gid = String((a as any).objetivo_id);
+        sums[gid] = (sums[gid] ?? 0) + (Number((a as any).valor_aporte) || 0);
+      }
     }
-  }
 
-  return (goals ?? []).map((g: any) => {
-    const goalId = String(g.id);
-    const target = Number(g.valor_alvo) || 0;
-    const contributed = sums[goalId] ?? 0;
-    const pct = target > 0 ? (contributed / target) * 100 : 0;
-    return {
-      user_id: uid,
-      goal_id: goalId,
-      name: String(g.nome),
-      target_value: target,
-      current_contributed: contributed,
-      percent_progress: pct,
-      days_remaining: diffDays(String(g.data_alvo)),
-      is_monthly_plan: !!g.participa_plano_mensal
-    };
+    return (goals ?? []).map((g: any) => {
+      const goalId = String(g.id);
+      const target = Number(g.valor_alvo) || 0;
+      const contributed = sums[goalId] ?? 0;
+      const pct = target > 0 ? (contributed / target) * 100 : 0;
+      return {
+        user_id: uid,
+        goal_id: goalId,
+        name: String(g.nome),
+        target_value: target,
+        current_contributed: contributed,
+        percent_progress: pct,
+        days_remaining: diffDays(String(g.data_alvo)),
+        is_monthly_plan: !!g.participa_plano_mensal
+      };
+    });
   });
 }

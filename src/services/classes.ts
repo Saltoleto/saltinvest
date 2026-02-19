@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { requireUserId } from "./db";
+import { cacheFetch, cacheInvalidate } from "./cache";
 
 // UI expects the legacy shape (classes table with `target_percent`).
 export type ClassRow = {
@@ -12,57 +13,67 @@ export type ClassRow = {
 };
 
 const DEFAULT_POLICY_NAME = "Política Principal";
+const TTL_MS = 30_000;
+
+function k(uid: string, suffix: string) {
+  return `u:${uid}:classes:${suffix}`;
+}
 
 async function getOrCreatePrimaryPolicyId(uid: string): Promise<string> {
-  const { data: existing, error: e1 } = await supabase
-    .from("politicas_alocacao")
-    .select("id")
-    .eq("usuario_id", uid)
-    .order("criado_em", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (e1) throw e1;
-  if (existing?.id) return String(existing.id);
+  return cacheFetch(k(uid, "policy"), TTL_MS, async () => {
+    const { data: existing, error: e1 } = await supabase
+      .from("politicas_alocacao")
+      .select("id")
+      .eq("usuario_id", uid)
+      .order("criado_em", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (e1) throw e1;
+    if (existing?.id) return String(existing.id);
 
-  const { data, error } = await supabase
-    .from("politicas_alocacao")
-    .insert({ usuario_id: uid, nome: DEFAULT_POLICY_NAME })
-    .select("id")
-    .single();
-  if (error) throw error;
-  return String(data.id);
+    const { data, error } = await supabase
+      .from("politicas_alocacao")
+      .insert({ usuario_id: uid, nome: DEFAULT_POLICY_NAME })
+      .select("id")
+      .single();
+    if (error) throw error;
+
+    return String(data.id);
+  });
 }
 
 export async function listClasses(): Promise<ClassRow[]> {
   const uid = await requireUserId();
-  const policyId = await getOrCreatePrimaryPolicyId(uid);
+  return cacheFetch(k(uid, "list"), TTL_MS, async () => {
+    const policyId = await getOrCreatePrimaryPolicyId(uid);
 
-  const { data: cats, error: e1 } = await supabase
-    .from("categorias_ativos")
-    .select("id, usuario_id, nome, criado_em")
-    .eq("usuario_id", uid)
-    .order("criado_em", { ascending: false });
-  if (e1) throw e1;
+    const { data: cats, error: e1 } = await supabase
+      .from("categorias_ativos")
+      .select("id, usuario_id, nome, criado_em")
+      .eq("usuario_id", uid)
+      .order("criado_em", { ascending: false });
+    if (e1) throw e1;
 
-  const { data: items, error: e2 } = await supabase
-    .from("politicas_alocacao_itens")
-    .select("categoria_ativo_id, percentual_alvo")
-    .eq("politica_alocacao_id", policyId);
-  if (e2) throw e2;
+    const { data: items, error: e2 } = await supabase
+      .from("politicas_alocacao_itens")
+      .select("categoria_ativo_id, percentual_alvo")
+      .eq("politica_alocacao_id", policyId);
+    if (e2) throw e2;
 
-  const pctByCat = (items ?? []).reduce((acc: Record<string, number>, r: any) => {
-    acc[String(r.categoria_ativo_id)] = Number(r.percentual_alvo) || 0;
-    return acc;
-  }, {});
+    const pctByCat = (items ?? []).reduce((acc: Record<string, number>, r: any) => {
+      acc[String(r.categoria_ativo_id)] = Number(r.percentual_alvo) || 0;
+      return acc;
+    }, {});
 
-  return (cats ?? []).map((c: any) => ({
-    id: String(c.id),
-    user_id: String(c.usuario_id),
-    name: String(c.nome),
-    target_percent: pctByCat[String(c.id)] || 0,
-    created_at: c.criado_em ?? null,
-    updated_at: null
-  }));
+    return (cats ?? []).map((c: any) => ({
+      id: String(c.id),
+      user_id: String(c.usuario_id),
+      name: String(c.nome),
+      target_percent: pctByCat[String(c.id)] || 0,
+      created_at: c.criado_em ?? null,
+      updated_at: null
+    }));
+  });
 }
 
 export async function upsertClass(payload: { id?: string; name: string; target_percent?: number | null }): Promise<void> {
@@ -111,6 +122,8 @@ export async function upsertClass(payload: { id?: string; name: string; target_p
       if (error) throw error;
     }
   }
+
+  cacheInvalidate(`u:${uid}:classes:`);
 }
 
 export async function deleteClass(id: string): Promise<void> {
@@ -133,4 +146,6 @@ export async function deleteClass(id: string): Promise<void> {
 
   const { error } = await supabase.from("categorias_ativos").delete().eq("id", id).eq("usuario_id", uid);
   if (error) throw error;
+
+  cacheInvalidate(`u:${uid}:classes:`);
 }

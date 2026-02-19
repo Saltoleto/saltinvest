@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { requireUserId } from "./db";
+import { cacheFetch } from "./cache";
+
+const TTL_MS = 12_000;
+const k = (uid: string, suffix: string) => `u:${uid}:monthly:${suffix}`;
 
 // Legacy shapes expected by the UI.
 export type MonthlyPlanSummary = {
@@ -60,6 +64,9 @@ function monthsRemainingFromNow(targetDateISO: string): number {
 }
 
 async function getContribSums(uid: string, goalIds: string[]): Promise<Record<string, number>> {
+  // Used by multiple plan widgets; cache briefly to avoid repeat calls.
+  const key = k(uid, `contrib:${goalIds.sort().join(",")}`);
+  return cacheFetch(key, TTL_MS, async () => {
   const sums: Record<string, number> = {};
   if (!goalIds.length) return sums;
 
@@ -75,30 +82,35 @@ async function getContribSums(uid: string, goalIds: string[]): Promise<Record<st
     sums[gid] = (sums[gid] ?? 0) + (Number((r as any).valor_aporte) || 0);
   }
   return sums;
+  });
 }
 
 export async function getMonthlyPlanSummary(monthISO?: string): Promise<MonthlyPlanSummary | null> {
   const uid = await requireUserId();
   const m = normalizeMonthISO(monthISO);
-  const { data, error } = await supabase
-    .from("v_plano_mensal_resumo")
-    .select("usuario_id, mes_referencia, valor_total_sugerido, valor_total_aportado, valor_total_restante")
-    .eq("usuario_id", uid)
-    .eq("mes_referencia", m)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  return {
-    user_id: uid,
-    total_suggested_this_month: Number((data as any).valor_total_sugerido) || 0,
-    total_contributed_this_month: Number((data as any).valor_total_aportado) || 0,
-    total_remaining_this_month: Number((data as any).valor_total_restante) || 0
-  };
+  return cacheFetch(k(uid, `summary:${m}`), TTL_MS, async () => {
+    const { data, error } = await supabase
+      .from("v_plano_mensal_resumo")
+      .select("usuario_id, mes_referencia, valor_total_sugerido, valor_total_aportado, valor_total_restante")
+      .eq("usuario_id", uid)
+      .eq("mes_referencia", m)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      user_id: uid,
+      total_suggested_this_month: Number((data as any).valor_total_sugerido) || 0,
+      total_contributed_this_month: Number((data as any).valor_total_aportado) || 0,
+      total_remaining_this_month: Number((data as any).valor_total_restante) || 0
+    };
+  });
 }
 
 export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPlanGoalRow[]> {
   const uid = await requireUserId();
   const m = normalizeMonthISO(monthISO);
+
+  return cacheFetch(k(uid, `goals:${m}`), TTL_MS, async () => {
 
   const { data: detail, error: e1 } = await supabase
     .from("v_plano_mensal_detalhe")
@@ -146,6 +158,7 @@ export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPl
       contributed_this_month: paid,
       remaining_this_month: remainingThisMonth
     };
+  });
   });
 }
 
