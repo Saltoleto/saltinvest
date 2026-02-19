@@ -15,7 +15,6 @@ import { getInvestment, listAllocationsByInvestment, saveInvestmentWithAllocatio
 import { listMonthlyPlanGoals } from "@/services/monthly";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
 import { sum, toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/validate";
-import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 
 export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }) {
@@ -48,7 +47,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     if (!existing.data) return;
 
     setName(existing.data.name ?? "");
-    setTotalValue(existing.data.total_value != null ? formatBRL(Number(existing.data.total_value)) : "");
+    setTotalValue(String(existing.data.total_value ?? ""));
     setClassId(existing.data.class_id ?? "");
     setInstitutionId(existing.data.institution_id ?? "");
     setLiquidity((existing.data.liquidity_type as any) || "diaria");
@@ -60,7 +59,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     if (mode !== "edit") return;
     const map: Record<string, string> = {};
     for (const a of existingAlloc.data ?? []) {
-      map[a.goal_id] = a.amount != null ? formatBRL(Number(a.amount)) : "";
+      map[a.goal_id] = String(a.amount ?? 0);
     }
     setAlloc(map);
   }, [mode, existingAlloc.data]);
@@ -118,12 +117,12 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
       const scale = suggestedSum > total ? total / suggestedSum : 1;
       for (const c of candidates) {
         const v = Math.max(0, (c.suggested || 0) * scale);
-        next[c.goal_id] = v ? formatBRL(v) : "";
+        next[c.goal_id] = String(v.toFixed(2));
       }
     } else {
       // fallback: distribuição igualitária
       const each = total / candidates.length;
-      for (const c of candidates) next[c.goal_id] = each ? formatBRL(each) : "";
+      for (const c of candidates) next[c.goal_id] = String(each.toFixed(2));
     }
     setAlloc(next);
     toast.push({ title: "Distribuição automática aplicada", tone: "success" });
@@ -138,7 +137,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     // Se o usuário já informou o valor total, respeitamos o limite do investimento.
     const room = total > 0 ? Math.max(0, total - (allocatedTotal - current)) : desired;
     const value = total > 0 ? Math.min(desired, room) : desired;
-    setAllocation(goalId, value ? formatBRL(value) : "");
+    setAllocation(goalId, value ? value.toFixed(2) : "0");
   }
 
   async function onSave() {
@@ -207,14 +206,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
               <div className="mt-4 grid gap-4">
                 <Input label="Nome" placeholder="Ex: CDB 12% 2028" value={name} error={errs.name} onChange={(e) => setName(e.target.value)} />
 
-                <Input
-                  label="Valor total (R$)"
-                  placeholder="R$ 0,00"
-                  inputMode="numeric"
-                  value={totalValue}
-                  error={errs.total}
-                  onChange={(e) => setTotalValue(maskBRLCurrencyInput(e.target.value))}
-                />
+                <Input label="Valor total (R$)" placeholder="Ex: 1500" value={totalValue} error={errs.total} onChange={(e) => setTotalValue(e.target.value)} />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Classe" value={classId} onChange={(e) => setClassId(e.target.value)}>
@@ -306,10 +298,9 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
                       <div className="w-32">
                         <Input
                           label="Aporte (R$)"
-                          placeholder={g.is_monthly_plan && g.suggested > 0 ? formatBRL(g.suggested) : "R$ 0,00"}
-                          inputMode="numeric"
+                          placeholder={g.is_monthly_plan && g.suggested > 0 ? String(g.suggested.toFixed(2)) : "0"}
                           value={alloc[g.goal_id] ?? ""}
-                          onChange={(e) => setAllocation(g.goal_id, maskBRLCurrencyInput(e.target.value))}
+                          onChange={(e) => setAllocation(g.goal_id, e.target.value)}
                         />
                       </div>
                     </div>

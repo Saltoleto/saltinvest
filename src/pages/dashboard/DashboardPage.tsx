@@ -2,15 +2,12 @@ import React from "react";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
-import Button from "@/ui/primitives/Button";
 import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
-import { getEquitySummary, getFgcExposure, getTodayInsights, upsertTodayInsights, countInvestmentsThisMonth } from "@/services/analytics";
+import { getEquitySummary, getFgcExposure } from "@/services/analytics";
 import { listGoalsEvolution } from "@/services/goals";
 import { listInvestments } from "@/services/investments";
 import { Pie, PieChart, ResponsiveContainer, Tooltip, Cell } from "recharts";
-import { useToast } from "@/ui/feedback/Toast";
-import { Icon } from "@/ui/layout/icons";
 
 function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
@@ -41,13 +38,10 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 }
 
 export default function DashboardPage() {
-  const toast = useToast();
-
   const equity = useAsync(() => getEquitySummary(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
   const fgc = useAsync(() => getFgcExposure(), []);
   const invs = useAsync(() => listInvestments(), []);
-  const insights = useAsync(() => getTodayInsights(), []);
 
   const allocationsByClass = React.useMemo(() => {
     const rows = invs.data ?? [];
@@ -77,36 +71,6 @@ export default function DashboardPage() {
 
   const goalRows = goals.data ?? [];
 
-  async function generateInsights() {
-    try {
-      const monthlyCount = await countInvestmentsThisMonth();
-      const topGoal = [...goalRows].sort((a, b) => b.percent_progress - a.percent_progress)[0];
-
-      const cards: Array<{ type: string; text: string }> = [];
-
-      if (monthlyCount === 0) {
-        cards.push({ type: "nudge", text: "Você ainda não registrou investimentos neste mês. Um pequeno aporte agora mantém o plano em movimento." });
-      } else {
-        cards.push({ type: "streak", text: `Você registrou ${monthlyCount} investimento(s) este mês. Continue mantendo consistência.` });
-      }
-
-      if (topGoal) {
-        cards.push({ type: "goal", text: `Meta em destaque: “${topGoal.name}” está em ${topGoal.percent_progress.toFixed(1)}%. Pequenos aportes frequentes reduzem o risco de atraso.` });
-      }
-
-      const liquidPct = totalEquity > 0 ? (liquidEquity / totalEquity) * 100 : 0;
-      if (liquidPct < 10 && totalEquity > 0) {
-        cards.push({ type: "risk", text: "Sua liquidez está baixa. Considere reforçar sua reserva para aumentar flexibilidade." });
-      }
-
-      await upsertTodayInsights(cards);
-      toast.push({ title: "Insights atualizados", tone: "success" });
-      insights.reload();
-    } catch (e: any) {
-      toast.push({ title: "Não foi possível gerar insights", message: e?.message ?? "Erro", tone: "danger" });
-    }
-  }
-
   return (
     <div className="grid gap-4 lg:gap-6">
       {/* Stats */}
@@ -115,66 +79,6 @@ export default function DashboardPage() {
         <StatCard title="Liquidez diária" value={formatBRL(liquidEquity)} subtitle="Disponível sem esperar vencimento" />
         <StatCard title="Proteção FGC" value={formatBRL(fgcTotal)} subtitle="Montante marcado como coberto" />
       </div>
-
-      {/* Insights */}
-      <Card className="p-4">
-        <SectionHeader
-          title="Insights do dia"
-          right={
-            <Button variant="secondary" onClick={() => void generateInsights()}>
-              <Icon name="spark" className="h-4 w-4" />
-              Gerar
-            </Button>
-          }
-        />
-        <div className="mt-3">
-          {insights.loading ? (
-            <div className="text-sm text-slate-400">Carregando insights...</div>
-          ) : (insights.data ?? []).length ? (
-            <div className="grid gap-2">
-              {(insights.data ?? []).map((it: any, idx: number) => (
-                <div key={idx} className="rounded-xl2 border border-white/10 bg-white/5 p-3 text-sm text-slate-200">
-                  {it.text ?? String(it)}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="Sem insights ainda" subtitle="Clique em “Gerar” para criar recomendações rápidas baseadas nos seus dados." />
-          )}
-        </div>
-      </Card>
-
-      {/* Goals */}
-      <Card className="p-4">
-        <SectionHeader title="Progresso das metas" />
-        <div className="mt-3 grid gap-3">
-          {goals.loading ? (
-            <div className="text-sm text-slate-400">Carregando metas...</div>
-          ) : goalRows.length ? (
-            goalRows.map((g) => (
-              <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-slate-100 font-medium">{g.name}</div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
-                    </div>
-                  </div>
-                  <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
-                    {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? "No plano" : "Fora do plano"}
-                  </Badge>
-                </div>
-                <div className="mt-3">
-                  <Progress value={Number(g.percent_progress) || 0} />
-                  <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
-                </div>
-              </div>
-            ))
-          ) : (
-            <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
-          )}
-        </div>
-      </Card>
 
       {/* FGC */}
       <Card className="p-4">
@@ -208,8 +112,39 @@ export default function DashboardPage() {
           )}
         </div>
       </Card>
+      {/* Goals */}
+      <Card className="p-4">
+        <SectionHeader title="Progresso das metas" />
+        <div className="mt-3 grid gap-3">
+          {goals.loading ? (
+            <div className="text-sm text-slate-400">Carregando metas...</div>
+          ) : goalRows.length ? (
+            goalRows.map((g) => (
+              <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="text-slate-100 font-medium">{g.name}</div>
+                    <div className="mt-1 text-sm text-slate-400">
+                      {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
+                    </div>
+                  </div>
+                  <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
+                    {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? "No plano" : "Fora do plano"}
+                  </Badge>
+                </div>
+                <div className="mt-3">
+                  <Progress value={Number(g.percent_progress) || 0} />
+                  <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
+          )}
+        </div>
+      </Card>
 
-      {/* Charts (mover para o final para priorizar resumo + ações) */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card className="p-4">
           <SectionHeader title="Concentração por classe" />
@@ -219,7 +154,7 @@ export default function DashboardPage() {
                 <PieChart>
                   <Pie dataKey="value" data={allocationsByClass} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
                     {allocationsByClass.map((_, i) => (
-                      <Cell key={i} fill={["#22c55e", "#60a5fa", "#fbbf24", "#a78bfa", "#f472b6", "#fb7185", "#34d399", "#38bdf8"][i % 8]} />
+                      <Cell key={i} fill={["#22c55e","#60a5fa","#fbbf24","#a78bfa","#f472b6","#fb7185","#34d399","#38bdf8"][i % 8]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
@@ -247,7 +182,7 @@ export default function DashboardPage() {
                 <PieChart>
                   <Pie dataKey="value" data={allocationsByLiquidity} cx="50%" cy="50%" innerRadius={62} outerRadius={100} paddingAngle={3}>
                     {allocationsByLiquidity.map((_, i) => (
-                      <Cell key={i} fill={["#60a5fa", "#22c55e", "#fbbf24", "#a78bfa"][i % 4]} />
+                      <Cell key={i} fill={["#60a5fa","#22c55e","#fbbf24","#a78bfa"][i % 4]} />
                     ))}
                   </Pie>
                   <Tooltip formatter={(v: any) => formatBRL(Number(v))} />
@@ -267,6 +202,7 @@ export default function DashboardPage() {
           </div>
         </Card>
       </div>
+
     </div>
   );
 }
