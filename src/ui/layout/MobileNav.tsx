@@ -1,9 +1,9 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { navItems } from "./nav";
+import { navMainItems } from "./nav";
 import { Icon } from "./icons";
 
-const mobileItems = navItems.filter((x) => ["/app/dashboard", "/app/investments", "/app/goals", "/app/monthly-plan", "/app/settings"].includes(x.to));
+const mobileItems = navMainItems.filter((x) => ["/app/dashboard", "/app/investments", "/app/goals", "/app/monthly-plan", "/app/settings"].includes(x.to));
 
 export default function MobileNav() {
   return (

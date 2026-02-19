@@ -15,9 +15,9 @@ import { useToast } from "@/ui/feedback/Toast";
 import { Icon } from "@/ui/layout/icons";
 
 type FormState = {
-  id?: string;
   name: string;
   target_value: string;
+  start_date: string;
   target_date: string;
   is_monthly_plan: boolean;
 };
@@ -36,28 +36,31 @@ export default function GoalsPage() {
 
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState<FormState>({ name: "", target_value: "", target_date: "", is_monthly_plan: true });
+  const [form, setForm] = React.useState<FormState>({ name: "", target_value: "", start_date: "", target_date: "", is_monthly_plan: true });
   const [errs, setErrs] = React.useState<Record<string, string>>({});
 
+  function pad2(n: number) {
+    return String(n).padStart(2, "0");
+  }
+
+  function todayISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function plusMonthsISO(months: number) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
+  }
+
   function reset() {
-    setForm({ name: "", target_value: "", target_date: "", is_monthly_plan: true });
+    setForm({ name: "", target_value: "", start_date: todayISO(), target_date: plusMonthsISO(6), is_monthly_plan: true });
     setErrs({});
   }
 
   function openNew() {
     reset();
-    setOpen(true);
-  }
-
-  function openEdit(row: any) {
-    setForm({
-      id: row.id,
-      name: row.name,
-      target_value: row.target_value != null ? formatBRL(Number(row.target_value)) : "",
-      target_date: row.target_date,
-      is_monthly_plan: !!row.is_monthly_plan
-    });
-    setErrs({});
     setOpen(true);
   }
 
@@ -68,6 +71,7 @@ export default function GoalsPage() {
     const target = toNumberBRL(form.target_value);
     const n2 = requirePositiveNumber(target, "Valor alvo");
     if (n2) e.target_value = n2;
+    if (!form.start_date) e.start_date = "Data início é obrigatória.";
     if (!form.target_date) e.target_date = "Data alvo é obrigatória.";
 
     setErrs(e);
@@ -76,9 +80,9 @@ export default function GoalsPage() {
     try {
       setSaving(true);
       await upsertGoal({
-        id: form.id,
         name: form.name.trim(),
         target_value: target,
+        start_date: form.start_date,
         target_date: form.target_date,
         is_monthly_plan: form.is_monthly_plan
       });
@@ -114,6 +118,7 @@ export default function GoalsPage() {
         <div>
           <div className="text-slate-100 font-semibold">Ações</div>
           <div className="text-sm text-slate-400">Defina objetivos e acompanhe evolução com alocações.</div>
+          <div className="mt-1 text-xs text-slate-500">Pelo modelo de dados, metas não são editáveis (apenas criar e excluir).</div>
         </div>
         <Button
           onClick={openNew}
@@ -146,9 +151,6 @@ export default function GoalsPage() {
 
                     <div className="flex items-center gap-2">
                       <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>{g.is_monthly_plan ? "No plano" : "Fora do plano"}</Badge>
-                      <Button variant="secondary" onClick={() => openEdit(g)} className="h-9 px-3">
-                        Editar
-                      </Button>
                       <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
                         Excluir
                       </Button>
@@ -173,7 +175,7 @@ export default function GoalsPage() {
 
       <Modal
         open={open}
-        title={form.id ? "Editar meta" : "Nova meta"}
+        title="Nova meta"
         onClose={() => setOpen(false)}
         footer={
           <>
@@ -205,6 +207,14 @@ export default function GoalsPage() {
           />
 
           <Input
+            label="Data início"
+            type="date"
+            value={form.start_date}
+            error={errs.start_date}
+            onChange={(e) => setForm((s) => ({ ...s, start_date: e.target.value }))}
+          />
+
+          <Input
             label="Data alvo"
             type="date"
             value={form.target_date}
@@ -220,7 +230,7 @@ export default function GoalsPage() {
           />
 
           <div className="text-xs text-slate-500">
-            Dica: O progresso vem das alocações (investment_allocations) vinculadas a esta meta.
+            Dica: o progresso vem dos aportes (aportes) vinculados a esta meta.
           </div>
         </div>
       </Modal>

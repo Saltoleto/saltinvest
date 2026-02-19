@@ -31,6 +31,8 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   const existing = useAsync(() => (mode === "edit" && investmentId ? getInvestment(investmentId) : Promise.resolve(null)), [mode, investmentId]);
   const existingAlloc = useAsync(() => (mode === "edit" && investmentId ? listAllocationsByInvestment(investmentId) : Promise.resolve([])), [mode, investmentId]);
 
+  const isRedeemed = mode === "edit" && !!existing.data?.is_redeemed;
+
   const [name, setName] = React.useState("");
   const [totalValue, setTotalValue] = React.useState("");
   const [classId, setClassId] = React.useState<string | "">("");
@@ -142,11 +144,16 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   }
 
   async function onSave() {
+    if (isRedeemed) {
+      toast.push({ title: "Investimento resgatado", message: "Investimentos resgatados não podem ser editados.", tone: "danger" });
+      return;
+    }
     const e: Record<string, string> = {};
     const n1 = requireNonEmpty(name, "Nome");
     if (n1) e.name = n1;
     const n2 = requirePositiveNumber(total, "Valor total");
     if (n2) e.total = n2;
+    if (!classId) e.class = "Classe é obrigatória.";
     if (liquidity === "vencimento" && !dueDate) e.dueDate = "Data de vencimento é obrigatória.";
 
     if (overAllocated) e.alloc = "Soma das alocações não pode ser maior que o valor total do investimento.";
@@ -160,7 +167,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
         id: mode === "edit" ? investmentId : undefined,
         name: name.trim(),
         total_value: total,
-        class_id: classId || null,
+        class_id: classId,
         institution_id: institutionId || null,
         liquidity_type: liquidity,
         due_date: liquidity === "vencimento" ? dueDate : null,
@@ -186,12 +193,13 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
         <div>
           <div className="text-slate-100 font-semibold">{mode === "edit" ? "Editar investimento" : "Novo investimento"}</div>
           <div className="text-sm text-slate-400">Cadastre o ativo e distribua aportes nas metas.</div>
+          {isRedeemed ? <div className="mt-1 text-xs text-amber-200">Este investimento está resgatado e não pode ser editado.</div> : null}
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => navigate("/app/investments")}>
             Cancelar
           </Button>
-          <Button onClick={() => void onSave()} disabled={saving || loading}>
+          <Button onClick={() => void onSave()} disabled={saving || loading || isRedeemed}>
             {saving ? "Salvando..." : "Salvar"}
           </Button>
         </div>
@@ -217,8 +225,8 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
                 />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Select label="Classe" value={classId} onChange={(e) => setClassId(e.target.value)}>
-                    <option value="">Sem classe</option>
+                  <Select label="Classe" value={classId} error={errs.class} onChange={(e) => setClassId(e.target.value)}>
+                    <option value="" disabled>Selecione...</option>
                     {(classes.data ?? []).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}

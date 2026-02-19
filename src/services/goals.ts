@@ -1,28 +1,138 @@
-import { supabase, type Tables, type Views } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { requireUserId } from "./db";
 
-export async function listGoals(): Promise<Tables["goals"][]> {
-  const uid = await requireUserId();
-  const { data, error } = await supabase.from("goals").select("*").eq("user_id", uid).order("target_date", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as any;
+// Legacy shapes used across the UI.
+export type GoalRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  target_value: number;
+  target_date: string;
+  start_date: string;
+  is_monthly_plan: boolean;
+  created_at: string | null;
+  updated_at?: string | null;
+};
+
+export type GoalEvolutionRow = {
+  user_id: string;
+  goal_id: string;
+  name: string;
+  target_value: number;
+  current_contributed: number;
+  percent_progress: number;
+  days_remaining: number;
+  is_monthly_plan: boolean;
+};
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
 }
 
-export async function listGoalsEvolution(): Promise<Views["v_goals_evolution"][]> {
-  const uid = await requireUserId();
-  const { data, error } = await supabase.from("v_goals_evolution").select("*").eq("user_id", uid).order("target_value", { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as any;
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-export async function upsertGoal(payload: { id?: string; name: string; target_value: number; target_date: string; is_monthly_plan: boolean }): Promise<void> {
+function diffDays(dateISO: string): number {
+  const now = new Date();
+  const target = new Date(`${dateISO}T00:00:00`);
+  const ms = target.getTime() - now.getTime();
+  return Math.ceil(ms / (1000 * 60 * 60 * 24));
+}
+
+export async function listGoals(): Promise<GoalRow[]> {
   const uid = await requireUserId();
-  const row = { id: payload.id, user_id: uid, name: payload.name, target_value: payload.target_value, target_date: payload.target_date, is_monthly_plan: payload.is_monthly_plan };
-  const { error } = await supabase.from("goals").upsert(row, { onConflict: "id" });
+  const { data, error } = await supabase
+    .from("objetivos")
+    .select("id, usuario_id, nome, valor_alvo, data_inicio, data_alvo, participa_plano_mensal, criado_em")
+    .eq("usuario_id", uid)
+    .order("data_alvo", { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map((r: any) => ({
+    id: String(r.id),
+    user_id: String(r.usuario_id),
+    name: String(r.nome),
+    target_value: Number(r.valor_alvo) || 0,
+    start_date: String(r.data_inicio),
+    target_date: String(r.data_alvo),
+    is_monthly_plan: !!r.participa_plano_mensal,
+    created_at: r.criado_em ?? null,
+    updated_at: null
+  }));
+}
+
+export async function upsertGoal(payload: {
+  id?: string;
+  name: string;
+  target_value: number;
+  target_date: string;
+  start_date?: string;
+  is_monthly_plan: boolean;
+}): Promise<void> {
+  // DB model blocks updates (trigger). We only allow inserts from the app.
+  if (payload.id) {
+    throw new Error("Pelo modelo de dados, metas não podem ser editadas (apenas criar e excluir). Exclua e cadastre novamente.");
+  }
+
+  const uid = await requireUserId();
+  const row = {
+    usuario_id: uid,
+    nome: payload.name.trim(),
+    valor_alvo: payload.target_value,
+    data_inicio: payload.start_date || todayISO(),
+    data_alvo: payload.target_date,
+    participa_plano_mensal: !!payload.is_monthly_plan
+  };
+  const { error } = await supabase.from("objetivos").insert(row);
   if (error) throw error;
 }
 
 export async function deleteGoal(id: string): Promise<void> {
-  const { error } = await supabase.from("goals").delete().eq("id", id);
+  const uid = await requireUserId();
+  const { error } = await supabase.from("objetivos").delete().eq("id", id).eq("usuario_id", uid);
   if (error) throw error;
+}
+
+export async function listGoalsEvolution(): Promise<GoalEvolutionRow[]> {
+  const uid = await requireUserId();
+
+  const { data: goals, error: e1 } = await supabase
+    .from("objetivos")
+    .select("id, nome, valor_alvo, data_alvo, participa_plano_mensal")
+    .eq("usuario_id", uid);
+  if (e1) throw e1;
+
+  const ids = (goals ?? []).map((g: any) => String(g.id));
+  const sums: Record<string, number> = {};
+  if (ids.length) {
+    const { data: aportes, error: e2 } = await supabase
+      .from("aportes")
+      .select("objetivo_id, valor_aporte")
+      .eq("usuario_id", uid)
+      .in("objetivo_id", ids);
+    if (e2) throw e2;
+    for (const a of aportes ?? []) {
+      const gid = String((a as any).objetivo_id);
+      sums[gid] = (sums[gid] ?? 0) + (Number((a as any).valor_aporte) || 0);
+    }
+  }
+
+  return (goals ?? []).map((g: any) => {
+    const goalId = String(g.id);
+    const target = Number(g.valor_alvo) || 0;
+    const contributed = sums[goalId] ?? 0;
+    const pct = target > 0 ? (contributed / target) * 100 : 0;
+    return {
+      user_id: uid,
+      goal_id: goalId,
+      name: String(g.nome),
+      target_value: target,
+      current_contributed: contributed,
+      percent_progress: pct,
+      days_remaining: diffDays(String(g.data_alvo)),
+      is_monthly_plan: !!g.participa_plano_mensal
+    };
+  });
 }

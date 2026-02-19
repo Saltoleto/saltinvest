@@ -58,7 +58,7 @@ export default function ClassesPage() {
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Excluir esta classe? Investimentos vinculados ficarão sem classe.")) return;
+    if (!confirm("Excluir esta classe?")) return;
     try {
       await deleteClass(id);
       toast.push({ title: "Classe excluída", tone: "success" });

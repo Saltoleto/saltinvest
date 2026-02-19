@@ -2,7 +2,7 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import Card from "../primitives/Card";
 import Button from "../primitives/Button";
-import { navItems } from "./nav";
+import { navMainItems } from "./nav";
 import { Icon } from "./icons";
 import { useAuth } from "@/state/auth/AuthContext";
 
@@ -29,7 +29,7 @@ export default function Sidebar() {
         <Brand />
 
         <div className="mt-3 grid gap-1">
-          {navItems.map((item) => (
+          {navMainItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -50,11 +50,7 @@ export default function Sidebar() {
           <div className="text-xs text-slate-400">Logado como</div>
           <div className="text-sm text-slate-200 truncate">{user?.email ?? "—"}</div>
 
-          <Button
-            variant="secondary"
-            className="mt-3 w-full justify-center"
-            onClick={() => void signOut()}
-          >
+          <Button variant="secondary" className="mt-3 w-full justify-center" onClick={() => void signOut()}>
             <Icon name="logout" className="h-4 w-4" />
             Sair
           </Button>

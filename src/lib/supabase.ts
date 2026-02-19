@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 
+// IMPORTANT:
+// This app is aligned to the SQL model in `sql-saltinvest.sql`.
+// We keep types lightweight and only for the objects we query directly.
 export type Database = {
   public: {
     Tables: {
@@ -11,143 +14,241 @@ export type Database = {
         Update: { email?: string | null; created_at?: string | null };
         Relationships: [];
       };
-      classes: {
-        Row: { id: string; user_id: string; name: string; target_percent: number | null; created_at: string | null; updated_at: string | null };
-        Insert: { id?: string; user_id: string; name: string; target_percent?: number | null; created_at?: string | null; updated_at?: string | null };
-        Update: { name?: string; target_percent?: number | null; updated_at?: string | null };
+
+      categorias_ativos: {
+        Row: { id: string; usuario_id: string; nome: string; criado_em: string };
+        Insert: { id?: string; usuario_id: string; nome: string; criado_em?: string };
+        Update: { nome?: string };
         Relationships: [];
       };
-      institutions: {
-        Row: { id: string; user_id: string; name: string; created_at: string | null; updated_at: string | null };
-        Insert: { id?: string; user_id: string; name: string; created_at?: string | null; updated_at?: string | null };
-        Update: { name?: string; updated_at?: string | null };
+
+      instituicoes_financeiras: {
+        Row: { id: string; usuario_id: string; nome: string; criado_em: string };
+        Insert: { id?: string; usuario_id: string; nome: string; criado_em?: string };
+        Update: { nome?: string };
         Relationships: [];
       };
-      goals: {
-        Row: { id: string; user_id: string; name: string; target_value: number; target_date: string; is_monthly_plan: boolean; created_at: string | null; updated_at: string | null };
-        Insert: { id?: string; user_id: string; name: string; target_value: number; target_date: string; is_monthly_plan?: boolean; created_at?: string | null; updated_at?: string | null };
-        Update: { name?: string; target_value?: number; target_date?: string; is_monthly_plan?: boolean; updated_at?: string | null };
+
+      politicas_alocacao: {
+        Row: { id: string; usuario_id: string; nome: string; criado_em: string };
+        Insert: { id?: string; usuario_id: string; nome?: string; criado_em?: string };
+        Update: { nome?: string };
         Relationships: [];
       };
-      investments: {
+
+      politicas_alocacao_itens: {
+        Row: { id: string; politica_alocacao_id: string; categoria_ativo_id: string; percentual_alvo: number; criado_em: string };
+        Insert: { id?: string; politica_alocacao_id: string; categoria_ativo_id: string; percentual_alvo: number; criado_em?: string };
+        Update: { percentual_alvo?: number };
+        Relationships: [];
+      };
+
+      objetivos: {
         Row: {
           id: string;
-          user_id: string;
-          name: string;
-          total_value: number;
-          class_id: string | null;
-          institution_id: string | null;
-          due_date: string | null;
-          liquidity_type: string;
-          is_fgc_covered: boolean;
-          is_redeemed: boolean;
-          created_at: string | null;
-          updated_at: string | null;
+          usuario_id: string;
+          nome: string;
+          valor_alvo: number;
+          data_inicio: string;
+          data_alvo: string;
+          participa_plano_mensal: boolean;
+          criado_em: string;
         };
         Insert: {
           id?: string;
-          user_id: string;
-          name: string;
-          total_value: number;
-          class_id?: string | null;
-          institution_id?: string | null;
-          due_date?: string | null;
-          liquidity_type: string;
-          is_fgc_covered?: boolean;
-          is_redeemed?: boolean;
-          created_at?: string | null;
-          updated_at?: string | null;
+          usuario_id: string;
+          nome: string;
+          valor_alvo: number;
+          data_inicio: string;
+          data_alvo: string;
+          participa_plano_mensal?: boolean;
+          criado_em?: string;
+        };
+        // Updates are intentionally blocked by DB trigger.
+        Update: never;
+        Relationships: [];
+      };
+
+      parcelas_objetivo: {
+        Row: {
+          id: string;
+          objetivo_id: string;
+          usuario_id: string;
+          mes_referencia: string;
+          valor_planejado: number;
+          status: "ABERTA" | "ATINGIDA";
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          objetivo_id: string;
+          usuario_id: string;
+          mes_referencia: string;
+          valor_planejado: number;
+          status?: "ABERTA" | "ATINGIDA";
+          criado_em?: string;
+        };
+        Update: { valor_planejado?: number; status?: "ABERTA" | "ATINGIDA" };
+        Relationships: [];
+      };
+
+      aplicacoes: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          nome: string;
+          categoria_ativo_id: string;
+          instituicao_financeira_id: string | null;
+          valor_aplicado: number;
+          liquidez: "DIARIA" | "NO_VENCIMENTO";
+          data_vencimento: string | null;
+          coberto_fgc: boolean;
+          status: "ATIVA" | "RESGATADA";
+          criado_em: string;
+          atualizado_em: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          nome: string;
+          categoria_ativo_id: string;
+          instituicao_financeira_id?: string | null;
+          valor_aplicado: number;
+          liquidez?: "DIARIA" | "NO_VENCIMENTO";
+          data_vencimento?: string | null;
+          coberto_fgc?: boolean;
+          status?: "ATIVA" | "RESGATADA";
+          criado_em?: string;
+          atualizado_em?: string;
         };
         Update: {
-          name?: string;
-          total_value?: number;
-          class_id?: string | null;
-          institution_id?: string | null;
-          due_date?: string | null;
-          liquidity_type?: string;
-          is_fgc_covered?: boolean;
-          is_redeemed?: boolean;
-          updated_at?: string | null;
+          nome?: string;
+          categoria_ativo_id?: string;
+          instituicao_financeira_id?: string | null;
+          valor_aplicado?: number;
+          liquidez?: "DIARIA" | "NO_VENCIMENTO";
+          data_vencimento?: string | null;
+          coberto_fgc?: boolean;
+          status?: "ATIVA" | "RESGATADA";
         };
         Relationships: [];
       };
-      investment_allocations: {
-        Row: { id: string; investment_id: string; goal_id: string; amount: number; created_at: string | null; updated_at: string | null };
-        Insert: { id?: string; investment_id: string; goal_id: string; amount: number; created_at?: string | null; updated_at?: string | null };
-        Update: { amount?: number; updated_at?: string | null };
+
+      aportes: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          aplicacao_id: string;
+          objetivo_id: string;
+          parcela_objetivo_id: string | null;
+          valor_aporte: number;
+          aportado_em: string;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          aplicacao_id: string;
+          objetivo_id: string;
+          parcela_objetivo_id?: string | null;
+          valor_aporte: number;
+          aportado_em?: string;
+          criado_em?: string;
+        };
+        Update: { valor_aporte?: number; parcela_objetivo_id?: string | null };
         Relationships: [];
       };
-      insights: {
-        Row: { id: string; user_id: string; insight_date: string; content: Json; created_at: string | null; updated_at: string | null };
-        Insert: { id?: string; user_id: string; insight_date: string; content: Json; created_at?: string | null; updated_at?: string | null };
-        Update: { content?: Json; updated_at?: string | null };
+
+      resgates_aplicacoes: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          aplicacao_id: string;
+          resgatado_em: string;
+          valor_resgatado: number;
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          aplicacao_id: string;
+          resgatado_em?: string;
+          valor_resgatado: number;
+          criado_em?: string;
+        };
+        Update: never;
         Relationships: [];
       };
     };
+
     Views: {
-      v_equity_summary: {
-        Row: { user_id: string; total_equity: number; liquid_equity: number; fgc_protected_total: number };
+      v_parcelas_objetivo_com_pago: {
+        Row: Database["public"]["Tables"]["parcelas_objetivo"]["Row"] & { valor_pago: number };
       };
-      v_goals_evolution: {
+
+      v_plano_mensal_resumo: {
         Row: {
-          user_id: string;
-          goal_id: string;
-          name: string;
-          target_value: number;
-          current_contributed: number;
-          percent_progress: number;
-          days_remaining: number;
-          is_monthly_plan: boolean;
+          usuario_id: string;
+          mes_referencia: string;
+          valor_total_sugerido: number;
+          valor_total_aportado: number;
+          valor_total_restante: number;
         };
       };
-      v_fgc_exposure: {
-        Row: { user_id: string; institution_name: string; covered_amount: number; uncovered_amount: number; total_in_institution: number };
-      };
-      v_monthly_plan_goals: {
+
+      v_plano_mensal_detalhe: {
         Row: {
-          user_id: string;
-          goal_id: string;
-          name: string;
-          target_value: number;
-          target_date: string;
-          is_monthly_plan: boolean;
-          current_contributed: number;
-          remaining_value: number;
-          months_remaining: number;
-          suggested_this_month: number;
-          contributed_this_month: number;
-          remaining_this_month: number;
+          usuario_id: string;
+          objetivo_id: string;
+          objetivo_nome: string;
+          participa_plano_mensal: boolean;
+          mes_referencia: string;
+          valor_planejado: number;
+          valor_pago: number;
+          status: "ABERTA" | "ATINGIDA";
+          em_atraso: boolean;
         };
       };
-      v_monthly_plan_summary: {
+
+      v_objetivos_progresso: {
         Row: {
-          user_id: string;
-          total_suggested_this_month: number;
-          total_contributed_this_month: number;
-          total_remaining_this_month: number;
+          usuario_id: string;
+          objetivo_id: string;
+          nome: string;
+          parcelas_atingidas: number;
+          parcelas_total: number;
+          percentual_atingimento: number;
         };
       };
-      v_monthly_plan_ranking: {
+
+      v_objetivos_aportes_historico: {
         Row: {
-          user_id: string;
-          goal_id: string;
-          name: string;
-          target_value: number;
-          target_date: string;
-          is_monthly_plan: boolean;
-          current_contributed: number;
-          remaining_value: number;
-          months_remaining: number;
-          suggested_this_month: number;
-          contributed_this_month: number;
-          remaining_this_month: number;
-          priority_score: number;
-          priority_rank: number;
+          usuario_id: string;
+          objetivo_id: string;
+          objetivo_nome: string;
+          parcela_objetivo_id: string | null;
+          mes_referencia: string | null;
+          aplicacao_id: string;
+          aplicacao_nome: string;
+          valor_aporte: number;
+          aportado_em: string;
         };
       };
     };
-    Functions: {};
-    Enums: {};
+
+    Functions: {
+      fn_aplicacoes_resgatar: {
+        Args: { p_aplicacao_id: string; p_valor_resgatado: number };
+        Returns: void;
+      };
+    };
+
+    Enums: {
+      liquidez_aplicacao: "DIARIA" | "NO_VENCIMENTO";
+      status_aplicacao: "ATIVA" | "RESGATADA";
+      status_parcela_objetivo: "ABERTA" | "ATINGIDA";
+    };
+
     CompositeTypes: {};
   };
 };

@@ -1,287 +1,836 @@
--- ESQUEMA SQL COMPLETO - SALTINVEST
--- Versão: 1.2 (Com suporte a FGC, Metas Mensais e RLS)
+-- =========================================================
+--  Gestão Centralizada de Investimentos (Business Naming)
+--  Supabase / PostgreSQL
+--  - Usuário vê: Objetivos, Aplicações, Aportes, Plano Mensal
+--  - "Parcelas do objetivo" existem apenas para modelagem interna
+-- =========================================================
 
--- 1. EXTENSÕES (Caso utilize PostgreSQL/Supabase)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+create extension if not exists "pgcrypto";
 
--- 2. TABELAS PRINCIPAIS
+-- =========================================================
+--  ENUMs (Business)
+-- =========================================================
+do $$
+begin
+  if not exists (select 1 from pg_type where typname = 'liquidez_aplicacao') then
+    create type public.liquidez_aplicacao as enum ('DIARIA', 'NO_VENCIMENTO');
+  end if;
 
--- Tabela de Perfis (Vinculada ao Auth)
-CREATE TABLE public.profiles (
-    id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-    email TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+  if not exists (select 1 from pg_type where typname = 'status_aplicacao') then
+    create type public.status_aplicacao as enum ('ATIVA', 'RESGATADA');
+  end if;
+
+  if not exists (select 1 from pg_type where typname = 'status_parcela_objetivo') then
+    create type public.status_parcela_objetivo as enum ('ABERTA', 'ATINGIDA');
+  end if;
+end$$;
+
+-- =========================================================
+--  Cadastros
+-- =========================================================
+
+-- Categorias de ativos (classe de investimento)
+create table if not exists public.categorias_ativos (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+  nome text not null,
+  criado_em timestamptz not null default now(),
+  unique (usuario_id, nome)
 );
 
--- Tabela de Classes de Ativos
-CREATE TABLE public.classes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-    name TEXT NOT NULL,
-    target_percent DECIMAL(5,2) DEFAULT 0, -- Definido na tela de Alvos
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Instituições financeiras
+create table if not exists public.instituicoes_financeiras (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+  nome text not null,
+  criado_em timestamptz not null default now(),
+  unique (usuario_id, nome)
 );
 
--- Tabela de Instituições Financeiras
-CREATE TABLE public.institutions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- Política de alocação (alvo da carteira)
+create table if not exists public.politicas_alocacao (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+  nome text not null default 'Política Principal',
+  criado_em timestamptz not null default now(),
+  unique (usuario_id, nome)
 );
 
--- Tabela de Metas (Goals)
-CREATE TABLE public.goals (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-    name TEXT NOT NULL,
-    target_value DECIMAL(15,2) NOT NULL DEFAULT 0,
-    target_date DATE NOT NULL,
-    is_monthly_plan BOOLEAN DEFAULT TRUE, -- Flag para planejamento mensal
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- Itens da política (categoria + percentual)
+create table if not exists public.politicas_alocacao_itens (
+  id uuid primary key default gen_random_uuid(),
+  politica_alocacao_id uuid not null references public.politicas_alocacao(id) on delete cascade,
+  categoria_ativo_id uuid not null references public.categorias_ativos(id) on delete restrict,
+  percentual_alvo numeric(6,3) not null check (percentual_alvo > 0 and percentual_alvo <= 100),
+  criado_em timestamptz not null default now(),
+  unique (politica_alocacao_id, categoria_ativo_id)
 );
 
--- Tabela de Investimentos (Ativos)
-CREATE TABLE public.investments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-    class_id UUID REFERENCES public.classes(id) ON DELETE SET NULL,
-    institution_id UUID REFERENCES public.institutions(id) ON DELETE SET NULL,
-    name TEXT NOT NULL,
-    total_value DECIMAL(15,2) NOT NULL DEFAULT 0,
-    liquidity_type TEXT CHECK (liquidity_type IN ('diaria', 'vencimento')),
-    due_date DATE,
-    is_fgc_covered BOOLEAN DEFAULT FALSE, -- Flag de proteção FGC
-    is_redeemed BOOLEAN DEFAULT FALSE,    -- Flag de resgate
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+create index if not exists idx_politicas_itens_politica on public.politicas_alocacao_itens(politica_alocacao_id);
+
+-- Trigger: soma <= 100
+create or replace function public.fn_politica_validar_soma_percentual()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  soma_atual numeric;
+begin
+  select coalesce(sum(percentual_alvo), 0)
+    into soma_atual
+  from public.politicas_alocacao_itens
+  where politica_alocacao_id = new.politica_alocacao_id
+    and id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid);
+
+  soma_atual := soma_atual + new.percentual_alvo;
+
+  if soma_atual > 100 then
+    raise exception 'Soma dos percentuais da política excede 100%% (atual: %).', soma_atual;
+  end if;
+
+  return new;
+end$$;
+
+drop trigger if exists tg_politica_validar_soma_percentual on public.politicas_alocacao_itens;
+create trigger tg_politica_validar_soma_percentual
+before insert or update on public.politicas_alocacao_itens
+for each row execute function public.fn_politica_validar_soma_percentual();
+
+-- =========================================================
+--  Objetivos (Metas) - não pode editar, só criar/excluir
+-- =========================================================
+create table if not exists public.objetivos (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+
+  nome text not null,
+  valor_alvo numeric(14,2) not null check (valor_alvo > 0),
+
+  data_inicio date not null,
+  data_alvo date not null,
+
+  participa_plano_mensal boolean not null default true,
+
+  criado_em timestamptz not null default now(),
+  check (data_alvo >= data_inicio)
 );
 
--- Tabela de Alocação de Ativos em Metas (Relacionamento N:N)
--- No Firestore isso é um array/map, aqui é uma tabela de junção para integridade referencial
-CREATE TABLE public.investment_allocations (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    investment_id UUID REFERENCES public.investments(id) ON DELETE CASCADE,
-    goal_id UUID REFERENCES public.goals(id) ON DELETE CASCADE,
-    amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+create or replace function public.fn_objetivos_bloquear_edicao()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  raise exception 'Não é permitido editar objetivos. Apenas cadastrar ou excluir.';
+  return new;
+end$$;
+
+drop trigger if exists tg_objetivos_bloquear_edicao on public.objetivos;
+create trigger tg_objetivos_bloquear_edicao
+before update on public.objetivos
+for each row execute function public.fn_objetivos_bloquear_edicao();
+
+-- =========================================================
+--  Parcelas do Objetivo (modelagem interna)
+-- =========================================================
+create table if not exists public.parcelas_objetivo (
+  id uuid primary key default gen_random_uuid(),
+  objetivo_id uuid not null references public.objetivos(id) on delete cascade,
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+
+  mes_referencia date not null, -- 1º dia do mês
+  valor_planejado numeric(14,2) not null check (valor_planejado >= 0),
+
+  status public.status_parcela_objetivo not null default 'ABERTA',
+  criado_em timestamptz not null default now(),
+
+  unique (objetivo_id, mes_referencia)
 );
 
--- Tabela de Insights (Cache Diário)
-CREATE TABLE public.insights (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users ON DELETE CASCADE NOT NULL,
-    content JSONB, -- Array de {type, text}
-    insight_date DATE DEFAULT CURRENT_DATE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(user_id, insight_date)
+create index if not exists idx_parcelas_objetivo_usuario_mes on public.parcelas_objetivo(usuario_id, mes_referencia);
+create index if not exists idx_parcelas_objetivo_objetivo on public.parcelas_objetivo(objetivo_id);
+
+-- Meses inclusivos (por mês)
+create or replace function public.fn_periodo_meses_inclusivo(p_inicio date, p_fim date)
+returns int
+language sql
+immutable
+as $$
+  select (
+    (date_part('year', p_fim)::int * 12 + date_part('month', p_fim)::int) -
+    (date_part('year', p_inicio)::int * 12 + date_part('month', p_inicio)::int)
+  ) + 1
+$$;
+
+-- Geração automática de parcelas
+-- (SECURITY DEFINER para funcionar com RLS sem precisar liberar INSERT em parcelas_objetivo)
+create or replace function public.fn_objetivos_gerar_parcelas()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  qtd_meses int;
+  base numeric(14,10);
+  soma numeric(14,2) := 0;
+  i int;
+  mes date;
+  valor numeric(14,2);
+begin
+  qtd_meses := public.fn_periodo_meses_inclusivo(
+    date_trunc('month', new.data_inicio)::date,
+    date_trunc('month', new.data_alvo)::date
+  );
+
+  if qtd_meses <= 0 then
+    raise exception 'Período inválido para gerar parcelas do objetivo.';
+  end if;
+
+  base := (new.valor_alvo / qtd_meses);
+
+  for i in 0..(qtd_meses - 1) loop
+    mes := (date_trunc('month', new.data_inicio)::date + (i || ' months')::interval)::date;
+
+    if i < (qtd_meses - 1) then
+      valor := round(base::numeric, 2);
+      soma := soma + valor;
+    else
+      valor := round((new.valor_alvo - soma)::numeric, 2);
+      if valor < 0 then valor := 0; end if;
+    end if;
+
+    insert into public.parcelas_objetivo (objetivo_id, usuario_id, mes_referencia, valor_planejado, status)
+    values (new.id, new.usuario_id, mes, valor, 'ABERTA');
+  end loop;
+
+  return new;
+end$$;
+
+drop trigger if exists tg_objetivos_gerar_parcelas on public.objetivos;
+create trigger tg_objetivos_gerar_parcelas
+after insert on public.objetivos
+for each row execute function public.fn_objetivos_gerar_parcelas();
+
+-- =========================================================
+--  Aplicações (Investimentos)
+-- =========================================================
+create table if not exists public.aplicacoes (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+
+  nome text not null,
+
+  categoria_ativo_id uuid not null references public.categorias_ativos(id) on delete restrict,
+  instituicao_financeira_id uuid references public.instituicoes_financeiras(id) on delete set null,
+
+  valor_aplicado numeric(14,2) not null check (valor_aplicado > 0),
+
+  liquidez public.liquidez_aplicacao not null default 'DIARIA',
+  data_vencimento date null,
+
+  coberto_fgc boolean not null default false,
+
+  status public.status_aplicacao not null default 'ATIVA',
+
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+
+  check (
+    (liquidez = 'NO_VENCIMENTO' and data_vencimento is not null)
+    or
+    (liquidez = 'DIARIA')
+  )
 );
 
--- 3. SEGURANÇA (ROW LEVEL SECURITY)
+create index if not exists idx_aplicacoes_usuario_status on public.aplicacoes(usuario_id, status);
+create index if not exists idx_aplicacoes_usuario_vencimento on public.aplicacoes(usuario_id, data_vencimento);
 
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.classes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.institutions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.goals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.investments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.investment_allocations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.insights ENABLE ROW LEVEL SECURITY;
+create or replace function public.fn_touch_atualizado_em()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.atualizado_em := now();
+  return new;
+end$$;
 
--- Políticas: Usuário só vê seus próprios dados
-CREATE POLICY "Users can only access their own data" ON public.classes FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Users can only access their own data" ON public.institutions FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Users can only access their own data" ON public.goals FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Users can only access their own data" ON public.investments FOR ALL USING (auth.uid() = user_id);
-CREATE POLICY "Users can only access their own data" ON public.investment_allocations FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.investments WHERE id = investment_id AND user_id = auth.uid())
+drop trigger if exists tg_touch_aplicacoes on public.aplicacoes;
+create trigger tg_touch_aplicacoes
+before update on public.aplicacoes
+for each row execute function public.fn_touch_atualizado_em();
+
+-- =========================================================
+--  Aportes (alocação do valor aplicado em objetivos/parcelas)
+--  (CORRIGIDO: removido CHECK com subquery; substituído por trigger)
+-- =========================================================
+
+-- Caso você tenha tentado rodar antes e criado parcialmente:
+alter table if exists public.aportes
+drop constraint if exists ck_parcela_objetivo_consistente;
+
+create table if not exists public.aportes (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+
+  aplicacao_id uuid not null references public.aplicacoes(id) on delete cascade,
+  objetivo_id uuid not null references public.objetivos(id) on delete cascade,
+  parcela_objetivo_id uuid references public.parcelas_objetivo(id) on delete set null,
+
+  valor_aporte numeric(14,2) not null check (valor_aporte > 0),
+
+  aportado_em timestamptz not null default now(),
+  criado_em timestamptz not null default now()
 );
-CREATE POLICY "Users can only access their own data" ON public.insights FOR ALL USING (auth.uid() = user_id);
 
--- 4. VIEWS DE ANÁLISE (O coração do SaltInvest)
+create index if not exists idx_aportes_usuario_data on public.aportes(usuario_id, aportado_em);
+create index if not exists idx_aportes_aplicacao on public.aportes(aplicacao_id);
+create index if not exists idx_aportes_objetivo on public.aportes(objetivo_id);
+create index if not exists idx_aportes_parcela on public.aportes(parcela_objetivo_id);
 
--- View para Resumo do Patrimônio e Liquidez
-CREATE OR REPLACE VIEW public.v_equity_summary AS
-SELECT 
-    user_id,
-    SUM(total_value) FILTER (WHERE NOT is_redeemed) as total_equity,
-    SUM(total_value) FILTER (WHERE NOT is_redeemed AND liquidity_type = 'diaria') as liquid_equity,
-    SUM(total_value) FILTER (WHERE NOT is_redeemed AND is_fgc_covered) as fgc_protected_total
-FROM public.investments
-GROUP BY user_id;
+-- Validações: ownership + parcela pertence ao objetivo informado
+create or replace function public.fn_aportes_validar_consistencia()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- aplicação pertence ao usuário
+  perform 1
+  from public.aplicacoes ap
+  where ap.id = new.aplicacao_id and ap.usuario_id = new.usuario_id;
 
--- View para Progresso das Metas
-CREATE OR REPLACE VIEW public.v_goals_evolution AS
-SELECT 
-    g.id as goal_id,
-    g.user_id,
-    g.name,
-    g.target_value,
-    g.is_monthly_plan,
-    COALESCE(SUM(ia.amount), 0) as current_contributed,
-    CASE 
-        WHEN g.target_value > 0 THEN (COALESCE(SUM(ia.amount), 0) / g.target_value) * 100 
-        ELSE 0 
-    END as percent_progress,
-    (g.target_date - CURRENT_DATE) as days_remaining
-FROM public.goals g
-LEFT JOIN public.investment_allocations ia ON g.id = ia.goal_id
-GROUP BY g.id, g.user_id, g.name, g.target_value, g.target_date, g.is_monthly_plan;
+  if not found then
+    raise exception 'Aplicação inválida ou não pertence ao usuário.';
+  end if;
 
--- View para Exposição ao FGC por Instituição (Solicitado)
-CREATE OR REPLACE VIEW public.v_fgc_exposure AS
-SELECT 
-    i.user_id,
-    inst.name as institution_name,
-    SUM(i.total_value) FILTER (WHERE i.is_fgc_covered) as covered_amount,
-    SUM(i.total_value) FILTER (WHERE NOT i.is_fgc_covered) as uncovered_amount,
-    SUM(i.total_value) as total_in_institution
-FROM public.investments i
-JOIN public.institutions inst ON i.institution_id = inst.id
-WHERE i.is_redeemed = FALSE
-GROUP BY i.user_id, inst.name;
+  -- objetivo pertence ao usuário
+  perform 1
+  from public.objetivos o
+  where o.id = new.objetivo_id and o.usuario_id = new.usuario_id;
 
--- =========================
--- PLANO DO MÊS (Views)
--- =========================
--- Regras:
--- - suggested_this_month = (target_value - current_contributed) / months_remaining
--- - months_remaining considera meses-calendário a partir do mês atual até o mês da target_date (inclusive)
---   Ex.: fev -> dez = 11, jun -> dez = 7
--- - total do mês = soma do suggested_this_month (somente metas is_monthly_plan = true)
--- - subtrai aportes feitos no mês atual (investment_allocations vinculadas a investments.created_at no mês atual)
--- - repete automaticamente mês a mês pelo filtro de created_at
+  if not found then
+    raise exception 'Objetivo inválido ou não pertence ao usuário.';
+  end if;
 
-CREATE OR REPLACE VIEW public.v_monthly_plan_goals AS
-WITH
-params AS (
-  SELECT date_trunc('month', CURRENT_DATE)::date AS current_month
-),
-goal_base AS (
-  SELECT
-    g.id                 AS goal_id,
-    g.user_id,
-    g.name,
-    g.target_value,
-    g.target_date,
-    g.is_monthly_plan,
-    COALESCE(SUM(ia.amount), 0)::numeric(15,2) AS current_contributed
-  FROM public.goals g
-  LEFT JOIN public.investment_allocations ia
-    ON ia.goal_id = g.id
-  GROUP BY g.id, g.user_id, g.name, g.target_value, g.target_date, g.is_monthly_plan
-),
-months_calc AS (
-  SELECT
-    gb.*,
-    p.current_month,
-    date_trunc('month', gb.target_date)::date AS target_month,
-    (
-      (EXTRACT(YEAR  FROM date_trunc('month', gb.target_date))::int - EXTRACT(YEAR  FROM p.current_month)::int) * 12
-      + (EXTRACT(MONTH FROM date_trunc('month', gb.target_date))::int - EXTRACT(MONTH FROM p.current_month)::int)
-      + 1
-    ) AS months_remaining_raw
-  FROM goal_base gb
-  CROSS JOIN params p
-),
-aportes_mes AS (
-  SELECT
-    ia.goal_id,
-    i.user_id,
-    COALESCE(SUM(ia.amount), 0)::numeric(15,2) AS contributed_this_month
-  FROM public.investment_allocations ia
-  JOIN public.investments i
-    ON i.id = ia.investment_id
-  WHERE date_trunc('month', i.created_at)::date = date_trunc('month', CURRENT_DATE)::date
-  GROUP BY ia.goal_id, i.user_id
+  -- parcela (se informada) deve pertencer ao mesmo objetivo e ao mesmo usuário
+  if new.parcela_objetivo_id is not null then
+    perform 1
+    from public.parcelas_objetivo po
+    where po.id = new.parcela_objetivo_id
+      and po.usuario_id = new.usuario_id
+      and po.objetivo_id = new.objetivo_id;
+
+    if not found then
+      raise exception 'Parcela inválida (não pertence ao objetivo/usuário informado).';
+    end if;
+  end if;
+
+  return new;
+end$$;
+
+drop trigger if exists tg_aportes_validar_consistencia on public.aportes;
+create trigger tg_aportes_validar_consistencia
+before insert or update on public.aportes
+for each row execute function public.fn_aportes_validar_consistencia();
+
+-- Regra: soma dos aportes da aplicação <= valor_aplicado
+create or replace function public.fn_aportes_validar_soma_por_aplicacao()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_valor_aplicado numeric(14,2);
+  v_soma numeric(14,2);
+begin
+  select valor_aplicado into v_valor_aplicado
+  from public.aplicacoes
+  where id = new.aplicacao_id and usuario_id = new.usuario_id;
+
+  if v_valor_aplicado is null then
+    raise exception 'Aplicação não encontrada ou sem permissão.';
+  end if;
+
+  select coalesce(sum(valor_aporte), 0)
+    into v_soma
+  from public.aportes
+  where aplicacao_id = new.aplicacao_id
+    and usuario_id = new.usuario_id
+    and id <> coalesce(new.id, '00000000-0000-0000-0000-000000000000'::uuid);
+
+  v_soma := v_soma + new.valor_aporte;
+
+  if v_soma > v_valor_aplicado then
+    raise exception 'Soma dos aportes (%) excede o valor aplicado (%).', v_soma, v_valor_aplicado;
+  end if;
+
+  return new;
+end$$;
+
+drop trigger if exists tg_aportes_validar_soma_por_aplicacao on public.aportes;
+create trigger tg_aportes_validar_soma_por_aplicacao
+before insert or update on public.aportes
+for each row execute function public.fn_aportes_validar_soma_por_aplicacao();
+
+-- Atualiza status da parcela (atingida se pago >= planejado)
+create or replace function public.fn_parcelas_atualizar_status(p_parcela_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  planejado numeric(14,2);
+  pago numeric(14,2);
+begin
+  select valor_planejado into planejado
+  from public.parcelas_objetivo
+  where id = p_parcela_id;
+
+  if planejado is null then
+    return;
+  end if;
+
+  select coalesce(sum(valor_aporte), 0) into pago
+  from public.aportes
+  where parcela_objetivo_id = p_parcela_id;
+
+  update public.parcelas_objetivo
+     set status = case
+       when pago >= planejado then 'ATINGIDA'::public.status_parcela_objetivo
+       else 'ABERTA'::public.status_parcela_objetivo
+     end
+   where id = p_parcela_id;
+end$$;
+
+create or replace function public.fn_tg_parcelas_atualizar_status()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.parcela_objetivo_id is not null then
+      perform public.fn_parcelas_atualizar_status(new.parcela_objetivo_id);
+    end if;
+    return new;
+
+  elsif tg_op = 'UPDATE' then
+    if old.parcela_objetivo_id is not null then
+      perform public.fn_parcelas_atualizar_status(old.parcela_objetivo_id);
+    end if;
+    if new.parcela_objetivo_id is not null then
+      perform public.fn_parcelas_atualizar_status(new.parcela_objetivo_id);
+    end if;
+    return new;
+
+  else
+    if old.parcela_objetivo_id is not null then
+      perform public.fn_parcelas_atualizar_status(old.parcela_objetivo_id);
+    end if;
+    return old;
+  end if;
+end$$;
+
+drop trigger if exists tg_parcelas_atualizar_status on public.aportes;
+create trigger tg_parcelas_atualizar_status
+after insert or update or delete on public.aportes
+for each row execute function public.fn_tg_parcelas_atualizar_status();
+
+-- Redistribui diferença (pago - planejado) igualmente nas próximas parcelas ABERTAS
+-- (função pronta para uso por RPC/ação do app se você decidir acionar automaticamente)
+create or replace function public.fn_parcelas_redistribuir_diferenca(p_parcela_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_objetivo_id uuid;
+  v_mes date;
+
+  v_planejado numeric(14,2);
+  v_pago numeric(14,2);
+  v_delta numeric(14,2);
+
+  qtd_proximas int;
+  ajuste numeric(14,10);
+
+  r record;
+begin
+  select objetivo_id, mes_referencia, valor_planejado
+    into v_objetivo_id, v_mes, v_planejado
+  from public.parcelas_objetivo
+  where id = p_parcela_id;
+
+  if v_objetivo_id is null then
+    raise exception 'Parcela do objetivo não encontrada.';
+  end if;
+
+  select coalesce(sum(valor_aporte), 0) into v_pago
+  from public.aportes
+  where parcela_objetivo_id = p_parcela_id;
+
+  v_delta := round((v_pago - v_planejado)::numeric, 2);
+
+  if v_delta = 0 then
+    perform public.fn_parcelas_atualizar_status(p_parcela_id);
+    return;
+  end if;
+
+  select count(*) into qtd_proximas
+  from public.parcelas_objetivo
+  where objetivo_id = v_objetivo_id
+    and mes_referencia > v_mes
+    and status = 'ABERTA';
+
+  if qtd_proximas = 0 then
+    perform public.fn_parcelas_atualizar_status(p_parcela_id);
+    return;
+  end if;
+
+  ajuste := (v_delta::numeric / qtd_proximas::numeric);
+
+  for r in
+    select id, valor_planejado
+    from public.parcelas_objetivo
+    where objetivo_id = v_objetivo_id
+      and mes_referencia > v_mes
+      and status = 'ABERTA'
+    order by mes_referencia
+  loop
+    update public.parcelas_objetivo
+       set valor_planejado = greatest(0, round((r.valor_planejado - ajuste)::numeric, 2))
+     where id = r.id;
+  end loop;
+
+  perform public.fn_parcelas_atualizar_status(p_parcela_id);
+end$$;
+
+-- =========================================================
+--  Resgates (histórico de aplicações)
+-- =========================================================
+create table if not exists public.resgates_aplicacoes (
+  id uuid primary key default gen_random_uuid(),
+  usuario_id uuid not null references auth.users(id) on delete cascade,
+
+  aplicacao_id uuid not null references public.aplicacoes(id) on delete cascade,
+  resgatado_em timestamptz not null default now(),
+  valor_resgatado numeric(14,2) not null check (valor_resgatado > 0),
+
+  criado_em timestamptz not null default now()
+);
+
+create index if not exists idx_resgates_aplicacoes_usuario_data on public.resgates_aplicacoes(usuario_id, resgatado_em);
+
+create or replace function public.fn_aplicacoes_resgatar(p_aplicacao_id uuid, p_valor_resgatado numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_usuario uuid := auth.uid();
+  v_liquidez public.liquidez_aplicacao;
+  v_vencimento date;
+  v_valor numeric(14,2);
+  v_status public.status_aplicacao;
+begin
+  if v_usuario is null then
+    raise exception 'Usuário não autenticado.';
+  end if;
+
+  select liquidez, data_vencimento, valor_aplicado, status
+    into v_liquidez, v_vencimento, v_valor, v_status
+  from public.aplicacoes
+  where id = p_aplicacao_id and usuario_id = v_usuario;
+
+  if v_liquidez is null then
+    raise exception 'Aplicação não encontrada.';
+  end if;
+
+  if v_status = 'RESGATADA' then
+    raise exception 'Aplicação já resgatada.';
+  end if;
+
+  if p_valor_resgatado is null or p_valor_resgatado <= 0 then
+    raise exception 'Valor de resgate inválido.';
+  end if;
+
+  if p_valor_resgatado > v_valor then
+    raise exception 'Valor resgatado não pode ser maior que o valor aplicado.';
+  end if;
+
+  if v_liquidez = 'NO_VENCIMENTO' then
+    if v_vencimento is null then
+      raise exception 'Aplicação sem data de vencimento.';
+    end if;
+    if v_vencimento > current_date then
+      raise exception 'Resgate permitido apenas no vencimento (%).', v_vencimento;
+    end if;
+  end if;
+
+  insert into public.resgates_aplicacoes(usuario_id, aplicacao_id, valor_resgatado)
+  values (v_usuario, p_aplicacao_id, p_valor_resgatado);
+
+  update public.aplicacoes
+     set status = 'RESGATADA'
+   where id = p_aplicacao_id and usuario_id = v_usuario;
+end$$;
+
+-- =========================================================
+--  Views (Plano Mensal / Progresso / Histórico)
+-- =========================================================
+
+-- Parcelas com total pago
+create or replace view public.v_parcelas_objetivo_com_pago as
+select
+  po.*,
+  coalesce(sum(a.valor_aporte), 0)::numeric(14,2) as valor_pago
+from public.parcelas_objetivo po
+left join public.aportes a on a.parcela_objetivo_id = po.id
+group by po.id;
+
+-- Resumo do plano mensal (totais por mês)
+create or replace view public.v_plano_mensal_resumo as
+select
+  o.usuario_id,
+  po.mes_referencia,
+  sum(case when o.participa_plano_mensal then po.valor_planejado else 0 end)::numeric(14,2) as valor_total_sugerido,
+  sum(case when o.participa_plano_mensal then coalesce(p.valor_pago,0) else 0 end)::numeric(14,2) as valor_total_aportado,
+  (sum(case when o.participa_plano_mensal then po.valor_planejado else 0 end) -
+   sum(case when o.participa_plano_mensal then coalesce(p.valor_pago,0) else 0 end)
+  )::numeric(14,2) as valor_total_restante
+from public.objetivos o
+join public.v_parcelas_objetivo_com_pago p on p.objetivo_id = o.id
+join public.parcelas_objetivo po on po.id = p.id
+group by o.usuario_id, po.mes_referencia;
+
+-- Detalhe do plano mensal (parcelas + atraso)
+create or replace view public.v_plano_mensal_detalhe as
+select
+  o.usuario_id,
+  o.id as objetivo_id,
+  o.nome as objetivo_nome,
+  o.participa_plano_mensal,
+  p.mes_referencia,
+  p.valor_planejado,
+  p.valor_pago,
+  p.status,
+  (p.mes_referencia < date_trunc('month', current_date)::date and p.status = 'ABERTA') as em_atraso
+from public.objetivos o
+join public.v_parcelas_objetivo_com_pago p on p.objetivo_id = o.id;
+
+-- Progresso do objetivo (% parcelas atingidas)
+create or replace view public.v_objetivos_progresso as
+select
+  o.usuario_id,
+  o.id as objetivo_id,
+  o.nome,
+  count(*) filter (where po.status = 'ATINGIDA') as parcelas_atingidas,
+  count(*) as parcelas_total,
+  case when count(*) = 0 then 0
+       else round((count(*) filter (where po.status = 'ATINGIDA')::numeric / count(*)::numeric) * 100, 2)
+  end as percentual_atingimento
+from public.objetivos o
+join public.parcelas_objetivo po on po.objetivo_id = o.id
+group by o.usuario_id, o.id, o.nome;
+
+-- Histórico de aportes por objetivo
+create or replace view public.v_objetivos_aportes_historico as
+select
+  a.usuario_id,
+  a.objetivo_id,
+  o.nome as objetivo_nome,
+  a.parcela_objetivo_id,
+  po.mes_referencia,
+  a.aplicacao_id,
+  ap.nome as aplicacao_nome,
+  a.valor_aporte,
+  a.aportado_em
+from public.aportes a
+join public.objetivos o on o.id = a.objetivo_id
+left join public.parcelas_objetivo po on po.id = a.parcela_objetivo_id
+join public.aplicacoes ap on ap.id = a.aplicacao_id;
+
+-- =========================================================
+--  RLS (padrão: usuario_id = auth.uid())
+-- =========================================================
+alter table public.categorias_ativos enable row level security;
+alter table public.instituicoes_financeiras enable row level security;
+alter table public.politicas_alocacao enable row level security;
+alter table public.politicas_alocacao_itens enable row level security;
+alter table public.objetivos enable row level security;
+alter table public.parcelas_objetivo enable row level security;
+alter table public.aplicacoes enable row level security;
+alter table public.aportes enable row level security;
+alter table public.resgates_aplicacoes enable row level security;
+
+-- categorias_ativos
+drop policy if exists "categorias_select_proprio" on public.categorias_ativos;
+create policy "categorias_select_proprio" on public.categorias_ativos for select
+using (usuario_id = auth.uid());
+
+drop policy if exists "categorias_insert_proprio" on public.categorias_ativos;
+create policy "categorias_insert_proprio" on public.categorias_ativos for insert
+with check (usuario_id = auth.uid());
+
+drop policy if exists "categorias_update_proprio" on public.categorias_ativos;
+create policy "categorias_update_proprio" on public.categorias_ativos for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
+
+drop policy if exists "categorias_delete_proprio" on public.categorias_ativos;
+create policy "categorias_delete_proprio" on public.categorias_ativos for delete
+using (usuario_id = auth.uid());
+
+-- instituicoes_financeiras
+drop policy if exists "inst_fin_select_proprio" on public.instituicoes_financeiras;
+create policy "inst_fin_select_proprio" on public.instituicoes_financeiras for select
+using (usuario_id = auth.uid());
+
+drop policy if exists "inst_fin_insert_proprio" on public.instituicoes_financeiras;
+create policy "inst_fin_insert_proprio" on public.instituicoes_financeiras for insert
+with check (usuario_id = auth.uid());
+
+drop policy if exists "inst_fin_update_proprio" on public.instituicoes_financeiras;
+create policy "inst_fin_update_proprio" on public.instituicoes_financeiras for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
+
+drop policy if exists "inst_fin_delete_proprio" on public.instituicoes_financeiras;
+create policy "inst_fin_delete_proprio" on public.instituicoes_financeiras for delete
+using (usuario_id = auth.uid());
+
+-- politicas_alocacao
+drop policy if exists "pol_select_proprio" on public.politicas_alocacao;
+create policy "pol_select_proprio" on public.politicas_alocacao for select
+using (usuario_id = auth.uid());
+
+drop policy if exists "pol_insert_proprio" on public.politicas_alocacao;
+create policy "pol_insert_proprio" on public.politicas_alocacao for insert
+with check (usuario_id = auth.uid());
+
+drop policy if exists "pol_update_proprio" on public.politicas_alocacao;
+create policy "pol_update_proprio" on public.politicas_alocacao for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
+
+drop policy if exists "pol_delete_proprio" on public.politicas_alocacao;
+create policy "pol_delete_proprio" on public.politicas_alocacao for delete
+using (usuario_id = auth.uid());
+
+-- politicas_alocacao_itens (ownership via política)
+drop policy if exists "pol_itens_select_proprio" on public.politicas_alocacao_itens;
+create policy "pol_itens_select_proprio" on public.politicas_alocacao_itens for select
+using (
+  exists (
+    select 1 from public.politicas_alocacao p
+    where p.id = politica_alocacao_id and p.usuario_id = auth.uid()
+  )
+);
+
+drop policy if exists "pol_itens_insert_proprio" on public.politicas_alocacao_itens;
+create policy "pol_itens_insert_proprio" on public.politicas_alocacao_itens for insert
+with check (
+  exists (
+    select 1 from public.politicas_alocacao p
+    where p.id = politica_alocacao_id and p.usuario_id = auth.uid()
+  )
+);
+
+drop policy if exists "pol_itens_update_proprio" on public.politicas_alocacao_itens;
+create policy "pol_itens_update_proprio" on public.politicas_alocacao_itens for update
+using (
+  exists (
+    select 1 from public.politicas_alocacao p
+    where p.id = politica_alocacao_id and p.usuario_id = auth.uid()
+  )
 )
-SELECT
-  mc.user_id,
-  mc.goal_id,
-  mc.name,
-  mc.target_value,
-  mc.target_date,
-  mc.is_monthly_plan,
+with check (
+  exists (
+    select 1 from public.politicas_alocacao p
+    where p.id = politica_alocacao_id and p.usuario_id = auth.uid()
+  )
+);
 
-  mc.current_contributed,
+drop policy if exists "pol_itens_delete_proprio" on public.politicas_alocacao_itens;
+create policy "pol_itens_delete_proprio" on public.politicas_alocacao_itens for delete
+using (
+  exists (
+    select 1 from public.politicas_alocacao p
+    where p.id = politica_alocacao_id and p.usuario_id = auth.uid()
+  )
+);
 
-  GREATEST(mc.target_value - mc.current_contributed, 0)::numeric(15,2) AS remaining_value,
-  GREATEST(mc.months_remaining_raw, 0) AS months_remaining,
+-- objetivos
+drop policy if exists "obj_select_proprio" on public.objetivos;
+create policy "obj_select_proprio" on public.objetivos for select
+using (usuario_id = auth.uid());
 
-  CASE
-    WHEN mc.is_monthly_plan IS TRUE
-     AND GREATEST(mc.months_remaining_raw, 0) > 0
-    THEN (GREATEST(mc.target_value - mc.current_contributed, 0) / GREATEST(mc.months_remaining_raw, 1))::numeric(15,2)
-    ELSE 0::numeric(15,2)
-  END AS suggested_this_month,
+drop policy if exists "obj_insert_proprio" on public.objetivos;
+create policy "obj_insert_proprio" on public.objetivos for insert
+with check (usuario_id = auth.uid());
 
-  COALESCE(am.contributed_this_month, 0)::numeric(15,2) AS contributed_this_month,
+drop policy if exists "obj_delete_proprio" on public.objetivos;
+create policy "obj_delete_proprio" on public.objetivos for delete
+using (usuario_id = auth.uid());
 
-  GREATEST(
-    (
-      CASE
-        WHEN mc.is_monthly_plan IS TRUE
-         AND GREATEST(mc.months_remaining_raw, 0) > 0
-        THEN (GREATEST(mc.target_value - mc.current_contributed, 0) / GREATEST(mc.months_remaining_raw, 1))::numeric(15,2)
-        ELSE 0::numeric(15,2)
-      END
-    ) - COALESCE(am.contributed_this_month, 0),
-    0
-  )::numeric(15,2) AS remaining_this_month
+-- parcelas_objetivo (permite select/update; insert é feito pela trigger security definer)
+drop policy if exists "parc_select_proprio" on public.parcelas_objetivo;
+create policy "parc_select_proprio" on public.parcelas_objetivo for select
+using (usuario_id = auth.uid());
 
-FROM months_calc mc
-LEFT JOIN aportes_mes am
-  ON am.goal_id = mc.goal_id
- AND am.user_id = mc.user_id;
+drop policy if exists "parc_update_proprio" on public.parcelas_objetivo;
+create policy "parc_update_proprio" on public.parcelas_objetivo for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
 
+-- aplicacoes
+drop policy if exists "apl_select_proprio" on public.aplicacoes;
+create policy "apl_select_proprio" on public.aplicacoes for select
+using (usuario_id = auth.uid());
 
-CREATE OR REPLACE VIEW public.v_monthly_plan_summary AS
-SELECT
-  user_id,
-  SUM(suggested_this_month)::numeric(15,2)   AS total_suggested_this_month,
-  SUM(contributed_this_month)::numeric(15,2) AS total_contributed_this_month,
-  SUM(remaining_this_month)::numeric(15,2)   AS total_remaining_this_month
-FROM public.v_monthly_plan_goals
-WHERE is_monthly_plan IS TRUE
-GROUP BY user_id;
+drop policy if exists "apl_insert_proprio" on public.aplicacoes;
+create policy "apl_insert_proprio" on public.aplicacoes for insert
+with check (usuario_id = auth.uid());
 
+drop policy if exists "apl_update_proprio" on public.aplicacoes;
+create policy "apl_update_proprio" on public.aplicacoes for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
 
--- Ranking de metas por prioridade (Plano do mês)
--- Heurística (premium/útil):
--- - Quanto menor o prazo (months_remaining), maior a prioridade
--- - Quanto maior o gap relativo (remaining_value/target_value), maior a prioridade
--- priority_score combina ambos; use priority_rank para ordenar.
-CREATE OR REPLACE VIEW public.v_monthly_plan_ranking AS
-SELECT
-  mpg.*,
-  (
-    (CASE WHEN mpg.months_remaining > 0 THEN (1::numeric / mpg.months_remaining) ELSE 0::numeric END) * 0.6
-    + (CASE WHEN mpg.target_value > 0 THEN (mpg.remaining_value / mpg.target_value) ELSE 0::numeric END) * 0.4
-  )::numeric(15,6) AS priority_score,
-  DENSE_RANK() OVER (
-    PARTITION BY mpg.user_id
-    ORDER BY
-      (
-        (CASE WHEN mpg.months_remaining > 0 THEN (1::numeric / mpg.months_remaining) ELSE 0::numeric END) * 0.6
-        + (CASE WHEN mpg.target_value > 0 THEN (mpg.remaining_value / mpg.target_value) ELSE 0::numeric END) * 0.4
-      ) DESC,
-      mpg.months_remaining ASC,
-      mpg.remaining_value DESC
-  ) AS priority_rank
-FROM public.v_monthly_plan_goals mpg
-WHERE mpg.is_monthly_plan IS TRUE
-  AND mpg.remaining_value > 0;
+drop policy if exists "apl_delete_proprio" on public.aplicacoes;
+create policy "apl_delete_proprio" on public.aplicacoes for delete
+using (usuario_id = auth.uid());
 
--- 5. TRIGGER PARA ATUALIZAÇÃO DE TIMESTAMPS
-CREATE OR REPLACE FUNCTION update_timestamp()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- aportes
+drop policy if exists "aportes_select_proprio" on public.aportes;
+create policy "aportes_select_proprio" on public.aportes for select
+using (usuario_id = auth.uid());
 
-CREATE TRIGGER update_goals_modtime BEFORE UPDATE ON public.goals FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
-CREATE TRIGGER update_investments_modtime BEFORE UPDATE ON public.investments FOR EACH ROW EXECUTE PROCEDURE update_timestamp();
+drop policy if exists "aportes_insert_proprio" on public.aportes;
+create policy "aportes_insert_proprio" on public.aportes for insert
+with check (usuario_id = auth.uid());
+
+drop policy if exists "aportes_update_proprio" on public.aportes;
+create policy "aportes_update_proprio" on public.aportes for update
+using (usuario_id = auth.uid()) with check (usuario_id = auth.uid());
+
+drop policy if exists "aportes_delete_proprio" on public.aportes;
+create policy "aportes_delete_proprio" on public.aportes for delete
+using (usuario_id = auth.uid());
+
+-- resgates_aplicacoes
+drop policy if exists "resg_select_proprio" on public.resgates_aplicacoes;
+create policy "resg_select_proprio" on public.resgates_aplicacoes for select
+using (usuario_id = auth.uid());
+
+drop policy if exists "resg_insert_proprio" on public.resgates_aplicacoes;
+create policy "resg_insert_proprio" on public.resgates_aplicacoes for insert
+with check (usuario_id = auth.uid());
+

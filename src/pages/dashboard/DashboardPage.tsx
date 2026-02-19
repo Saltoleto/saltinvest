@@ -49,7 +49,7 @@ export default function DashboardPage() {
     const map = new Map<string, number>();
     for (const r of rows) {
       if (r.is_redeemed) continue;
-      const key = r.class_name || "Sem classe";
+      const key = r.class_name || "—";
       map.set(key, (map.get(key) ?? 0) + (Number(r.total_value) || 0));
     }
     return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);

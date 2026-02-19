@@ -32,10 +32,11 @@ export default function InvestmentsPage() {
     });
   }, [invs.data, q, showRedeemed]);
 
-  async function toggleRedeemed(id: string, value: boolean) {
+  async function redeem(id: string) {
+    if (!confirm("Confirmar resgate deste investimento?")) return;
     try {
-      await setInvestmentRedeemed(id, value);
-      toast.push({ title: value ? "Marcado como resgatado" : "Reativado", tone: "success" });
+      await setInvestmentRedeemed(id, true);
+      toast.push({ title: "Resgate realizado", tone: "success" });
       invs.reload();
     } catch (e: any) {
       toast.push({ title: "Erro ao atualizar", message: e?.message ?? "Erro", tone: "danger" });
@@ -98,7 +99,7 @@ export default function InvestmentsPage() {
                         {r.liquidity_type === "diaria" ? <Badge variant="info">Diária</Badge> : <Badge variant="warning">Vencimento</Badge>}
                       </div>
                       <div className="mt-1 text-sm text-slate-400">
-                        {r.institution_name ?? "Sem instituição"} • {r.class_name ?? "Sem classe"}
+                        {r.institution_name ?? "Sem instituição"} • {r.class_name ?? "—"}
                         {r.liquidity_type === "vencimento" ? ` • venc: ${formatDateBR(r.due_date)}` : ""}
                       </div>
                     </div>
@@ -112,17 +113,25 @@ export default function InvestmentsPage() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2 justify-end">
-                    <Button variant="secondary" onClick={() => navigate(`/app/investments/${r.id}/edit`)} className="h-9 px-3">
+                    <Button
+                      variant="secondary"
+                      onClick={() => navigate(`/app/investments/${r.id}/edit`)}
+                      className="h-9 px-3"
+                      disabled={r.is_redeemed}
+                      title={r.is_redeemed ? "Investimentos resgatados não podem ser editados." : undefined}
+                    >
                       Editar
                     </Button>
 
-                    <Button
-                      variant={r.is_redeemed ? "secondary" : "ghost"}
-                      onClick={() => void toggleRedeemed(r.id, !r.is_redeemed)}
-                      className={"h-9 px-3 " + (r.is_redeemed ? "" : "text-amber-200 hover:bg-amber-400/10")}
-                    >
-                      {r.is_redeemed ? "Reativar" : "Marcar resgatado"}
-                    </Button>
+                    {!r.is_redeemed ? (
+                      <Button
+                        variant="ghost"
+                        onClick={() => void redeem(r.id)}
+                        className="h-9 px-3 text-amber-200 hover:bg-amber-400/10"
+                      >
+                        Resgatar
+                      </Button>
+                    ) : null}
 
                     <Button variant="ghost" onClick={() => void onDelete(r.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
                       Excluir
