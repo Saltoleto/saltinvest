@@ -1,7 +1,5 @@
 import React from "react";
-import { useNavigate, useParams } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
-import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
 import Select from "@/ui/primitives/Select";
 import Toggle from "@/ui/primitives/Toggle";
@@ -18,11 +16,25 @@ import { sum, toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/
 import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 
-export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }) {
+export type InvestmentFormHandle = {
+  save: () => Promise<void>;
+  isSaving: boolean;
+  isBusy: boolean;
+};
+
+type Props = {
+  mode: "create" | "edit";
+  investmentId?: string;
+  onClose: () => void;
+  onSaved: () => void;
+  onMetaChange?: (m: { isSaving: boolean; isBusy: boolean }) => void;
+};
+
+export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(function InvestmentForm(
+  { mode, investmentId, onClose, onSaved, onMetaChange },
+  ref
+) {
   const toast = useToast();
-  const navigate = useNavigate();
-  const params = useParams();
-  const investmentId = params.id as string | undefined;
 
   const classes = useAsync(() => listClasses(), []);
   const inst = useAsync(() => listInstitutions(), []);
@@ -46,7 +58,36 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   const [errs, setErrs] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
-    if (mode !== "edit") return;
+    onMetaChange?.({
+      isSaving: saving,
+      isBusy:
+        saving ||
+        classes.loading ||
+        inst.loading ||
+        goals.loading ||
+        monthly.loading ||
+        (mode === "edit" && (existing.loading || existingAlloc.loading)) ||
+        isRedeemed
+    });
+  }, [saving, classes.loading, inst.loading, goals.loading, monthly.loading, mode, existing.loading, existingAlloc.loading, isRedeemed, onMetaChange]);
+
+  function resetForCreate() {
+    setName("");
+    setTotalValue("");
+    setClassId("");
+    setInstitutionId("");
+    setLiquidity("diaria");
+    setDueDate("");
+    setFgc(false);
+    setAlloc({});
+    setErrs({});
+  }
+
+  React.useEffect(() => {
+    if (mode === "create") {
+      resetForCreate();
+      return;
+    }
     if (!existing.data) return;
 
     setName(existing.data.name ?? "");
@@ -80,6 +121,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     }
     return map;
   }, [monthly.data]);
+
   const allocations = React.useMemo(() => {
     const rows = goals.data ?? [];
     return rows.map((g) => ({
@@ -102,8 +144,6 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
   }
 
   function autoDistribute() {
-    // Premium: preenche com o "restante sugerido do mês" por meta (VIEW),
-    // e caso ultrapasse o total do investimento, escala proporcionalmente.
     const candidates = allocations.filter((a) => a.is_monthly_plan);
     if (!candidates.length) {
       toast.push({ title: "Sem metas no plano", message: "Ative “Plano do mês” em uma meta para usar auto-distribuição.", tone: "warning" });
@@ -113,9 +153,10 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
       toast.push({ title: "Defina o valor do investimento", tone: "warning" });
       return;
     }
-    const next: Record<string, string> = { ...alloc };
 
+    const next: Record<string, string> = { ...alloc };
     const suggestedSum = sum(candidates.map((c) => Math.max(0, c.suggested || 0)));
+
     if (suggestedSum > 0) {
       const scale = suggestedSum > total ? total / suggestedSum : 1;
       for (const c of candidates) {
@@ -123,10 +164,10 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
         next[c.goal_id] = v ? formatBRL(v) : "";
       }
     } else {
-      // fallback: distribuição igualitária
       const each = total / candidates.length;
       for (const c of candidates) next[c.goal_id] = each ? formatBRL(each) : "";
     }
+
     setAlloc(next);
     toast.push({ title: "Distribuição automática aplicada", tone: "success" });
   }
@@ -137,22 +178,24 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     const current = toNumberBRL(alloc[goalId] ?? "0");
     const desired = Math.max(0, s.remaining);
 
-    // Se o usuário já informou o valor total, respeitamos o limite do investimento.
     const room = total > 0 ? Math.max(0, total - (allocatedTotal - current)) : desired;
     const value = total > 0 ? Math.min(desired, room) : desired;
     setAllocation(goalId, value ? formatBRL(value) : "");
   }
 
-  async function onSave() {
+  async function save() {
     if (isRedeemed) {
       toast.push({ title: "Investimento resgatado", message: "Investimentos resgatados não podem ser editados.", tone: "danger" });
       return;
     }
+
     const e: Record<string, string> = {};
     const n1 = requireNonEmpty(name, "Nome");
     if (n1) e.name = n1;
+
     const n2 = requirePositiveNumber(total, "Valor total");
     if (n2) e.total = n2;
+
     if (!classId) e.class = "Classe é obrigatória.";
     if (liquidity === "vencimento" && !dueDate) e.dueDate = "Data de vencimento é obrigatória.";
 
@@ -163,7 +206,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
 
     try {
       setSaving(true);
-      const id = await saveInvestmentWithAllocations({
+      await saveInvestmentWithAllocations({
         id: mode === "edit" ? investmentId : undefined,
         name: name.trim(),
         total_value: total,
@@ -176,8 +219,7 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
       });
 
       toast.push({ title: "Investimento salvo", tone: "success" });
-      navigate("/app/investments", { replace: true });
-      return id;
+      onSaved();
     } catch (err: any) {
       toast.push({ title: "Erro ao salvar", message: err?.message ?? "Erro", tone: "danger" });
     } finally {
@@ -185,30 +227,33 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
     }
   }
 
+  React.useImperativeHandle(ref, () => ({
+    save,
+    isSaving: saving,
+    isBusy:
+      saving ||
+      classes.loading ||
+      inst.loading ||
+      goals.loading ||
+      monthly.loading ||
+      (mode === "edit" && (existing.loading || existingAlloc.loading)) ||
+      isRedeemed
+  }));
+
   const loading = classes.loading || inst.loading || goals.loading || monthly.loading || (mode === "edit" && (existing.loading || existingAlloc.loading));
 
   return (
-    <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4 flex items-start justify-between gap-4">
-        <div>
-          <div className="text-slate-100 font-semibold">{mode === "edit" ? "Editar investimento" : "Novo investimento"}</div>
-          <div className="text-sm text-slate-400">Cadastre o ativo e distribua aportes nas metas.</div>
-          {isRedeemed ? <div className="mt-1 text-xs text-amber-200">Este investimento está resgatado e não pode ser editado.</div> : null}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => navigate("/app/investments")}>
-            Cancelar
-          </Button>
-          <Button onClick={() => void onSave()} disabled={saving || loading || isRedeemed}>
-            {saving ? "Salvando..." : "Salvar"}
-          </Button>
-        </div>
-      </Card>
-
+    <div className="grid gap-4">
       {loading ? (
         <Card className="p-6 text-sm text-slate-400">Carregando formulário...</Card>
       ) : (
         <>
+          {isRedeemed ? (
+            <div className="rounded-xl2 border border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-200">
+              Este investimento está resgatado e não pode ser editado.
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="p-4">
               <div className="text-slate-100 font-semibold">Detalhes</div>
@@ -226,7 +271,9 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Classe" value={classId} error={errs.class} onChange={(e) => setClassId(e.target.value)}>
-                    <option value="" disabled>Selecione...</option>
+                    <option value="" disabled>
+                      Selecione...
+                    </option>
                     {(classes.data ?? []).map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -251,27 +298,22 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
 
                 {liquidity === "vencimento" ? (
                   <Input label="Data de vencimento" type="date" value={dueDate} error={errs.dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                ) : (
-                  <div className="rounded-xl2 border border-white/10 bg-white/5 p-3 text-sm text-slate-400">
-                    Com liquidez diária, a data de vencimento fica opcional e será salva como <span className="text-slate-200">null</span>.
-                  </div>
-                )}
+                ) : null}
 
-                <Toggle
-                  label="Coberto pelo FGC"
-                  hint="Use para análises de exposição por instituição."
-                  checked={fgc}
-                  onChange={setFgc}
-                />
+                <Toggle label="Coberto pelo FGC" hint="Use para análises de exposição por instituição." checked={fgc} onChange={setFgc} />
               </div>
             </Card>
 
             <Card className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-slate-100 font-semibold">Distribuição em metas</div>
-                <Button variant="secondary" onClick={autoDistribute}>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:bg-white/10 active:bg-white/15"
+                  onClick={autoDistribute}
+                >
                   Auto-distribuir
-                </Button>
+                </button>
               </div>
 
               <div className="mt-2 text-sm text-slate-400">
@@ -280,11 +322,9 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
                 <span className="text-slate-100 font-medium">{formatBRL(remainingToAllocate)}</span>
               </div>
 
-              {errs.alloc ? (
-                <div className="mt-3 rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{errs.alloc}</div>
-              ) : null}
+              {errs.alloc ? <div className="mt-3 rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{errs.alloc}</div> : null}
 
-              <div className="mt-4 grid gap-3 max-h-[520px] overflow-auto pr-1">
+              <div className="mt-4 grid gap-3">
                 {(allocations.length ? allocations : []).map((g) => (
                   <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -337,16 +377,15 @@ export default function InvestmentFormPage({ mode }: { mode: "create" | "edit" }
             </Card>
           </div>
 
-          <Card className="p-4">
-            <div className="text-slate-100 font-semibold">Validações aplicadas</div>
-            <div className="mt-2 text-sm text-slate-400 grid gap-1">
-              <div>• A soma dos aportes em metas não pode exceder o valor total do investimento.</div>
-              <div>• Se a liquidez for <span className="text-slate-200">No vencimento</span>, a data de vencimento é obrigatória.</div>
-              <div>• Cada insert/update envia <span className="text-slate-200">user_id</span> para respeitar as políticas RLS do schema.</div>
-            </div>
-          </Card>
+          {/* keep a minimal hint for required fields */}
+          <div className="text-xs text-slate-500">
+            {liquidity === "vencimento" ? "Liquidez no vencimento exige data de vencimento." : ""}
+          </div>
         </>
       )}
     </div>
   );
-}
+});
+
+// Backward compatibility (no longer routed): keep default export as the modal-friendly form.
+export default InvestmentForm;

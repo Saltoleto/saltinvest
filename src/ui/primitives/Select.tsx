@@ -36,8 +36,8 @@ function useOnClickOutside(refs: React.RefObject<HTMLElement>[], onOutside: () =
       const inside = refs.some((r) => r.current && r.current.contains(t));
       if (!inside) onOutside();
     }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("pointerdown", onDown as any);
+    return () => document.removeEventListener("pointerdown", onDown as any);
   }, [refs, onOutside]);
 }
 
@@ -105,7 +105,7 @@ export default function Select({
   function pick(opt: Opt) {
     if (opt.disabled) return;
     emitChange(opt.value);
-    setOpen(false);
+    requestAnimationFrame(() => setOpen(false));
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -119,7 +119,7 @@ export default function Select({
     }
     if (e.key === "Escape") {
       e.preventDefault();
-      setOpen(false);
+      requestAnimationFrame(() => setOpen(false));
       return;
     }
     if (e.key === "ArrowDown") {

@@ -2,8 +2,9 @@ import React from "react";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
+import Input from "@/ui/primitives/Input";
 import { useAsync } from "@/state/useAsync";
-import { getMonthlyPlanSummary, listMonthlyPlanGoals, listMonthlyPlanRanking } from "@/services/monthly";
+import { getMonthlyPlanSummary, listMonthlyPlanGoals } from "@/services/monthly";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
 
 type GoalRow = {
@@ -36,9 +37,12 @@ function cardEmphasisClass(variant: "success" | "warning" | "danger" | "info") {
 }
 
 export default function MonthlyPlanPage() {
-  const summary = useAsync(() => getMonthlyPlanSummary(), []);
-  const goals = useAsync(() => listMonthlyPlanGoals(), []);
-  const ranking = useAsync(() => listMonthlyPlanRanking(), []);
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const [month, setMonth] = React.useState<string>(defaultMonth);
+
+  const summary = useAsync(() => getMonthlyPlanSummary(month), [month]);
+  const goals = useAsync(() => listMonthlyPlanGoals(month), [month]);
 
   const totals = React.useMemo(() => {
     const s = summary.data;
@@ -74,70 +78,15 @@ export default function MonthlyPlanPage() {
               </div>
             </div>
           </div>
-        </div>
-      </Card>
 
-      <Card className="p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-slate-100 font-semibold">Prioridades do mês</div>
-            <div className="mt-1 text-sm text-slate-400">Ordem sugerida para acelerar as metas, considerando prazo e gap.</div>
+          <div className="min-w-[220px]">
+            <Input
+              label="Filtrar por mês"
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+            />
           </div>
-          <Badge variant="info">{ranking.data?.length ?? 0}</Badge>
-        </div>
-
-        <div className="mt-4 grid gap-3">
-          {ranking.loading ? (
-            <div className="text-sm text-slate-400">Carregando...</div>
-          ) : (ranking.data?.length ?? 0) ? (
-            (ranking.data ?? []).slice(0, 5).map((g: any) => {
-              const row: GoalRow = {
-                goal_id: g.goal_id,
-                name: g.name,
-                target_value: Number(g.target_value) || 0,
-                months_remaining: Number(g.months_remaining) || 0,
-                remaining_value: Number(g.remaining_value) || 0,
-                current_contributed: Number(g.current_contributed) || 0,
-                suggested_this_month: Number(g.suggested_this_month) || 0,
-                contributed_this_month: Number(g.contributed_this_month) || 0,
-                remaining_this_month: Number(g.remaining_this_month) || 0,
-                priority_rank: Number(g.priority_rank) || 0
-              };
-              const status = getMonthlyStatus(row);
-              const monthlyProgress = row.suggested_this_month > 0 ? (row.contributed_this_month / row.suggested_this_month) * 100 : 0;
-              return (
-              <div key={g.goal_id} className={"rounded-xl2 border border-white/10 bg-white/5 p-4 " + cardEmphasisClass(status.variant)}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-slate-100 font-medium">
-                      <span className="text-slate-400 mr-2">#{g.priority_rank}</span>
-                      {g.name}
-                    </div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      Restante: {formatBRL(Number(g.remaining_value))} • {Number(g.months_remaining)} mês(es) • Sugestão: {" "}
-                      <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
-                    </div>
-                    <div className="mt-3">
-                      <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>Mês</span>
-                        <span>
-                          {formatBRL(row.contributed_this_month)} / {formatBRL(row.suggested_this_month)}
-                        </span>
-                      </div>
-                      <Progress className="mt-2" value={clamp(monthlyProgress, 0, 100)} />
-                    </div>
-                  </div>
-                  <Badge variant={status.variant}>{status.label}</Badge>
-                </div>
-              </div>
-            );
-            })
-          ) : (
-            <div className="rounded-xl2 border border-white/10 bg-white/5 p-5 text-center">
-              <div className="text-slate-100 font-medium">Sem ranking</div>
-              <div className="mt-1 text-sm text-slate-400">Ative a flag “Plano do mês” em metas para ver prioridades.</div>
-            </div>
-          )}
         </div>
       </Card>
 

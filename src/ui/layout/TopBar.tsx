@@ -34,7 +34,7 @@ export default function TopBar() {
       <div className="flex items-center gap-2">
         {pathname === "/app/investments" ? (
           <Button
-            onClick={() => navigate("/app/investments/new")}
+            onClick={() => navigate("/app/investments?modal=new")}
             aria-label="Novo investimento"
             title="Novo investimento"
             className="h-10 w-10 px-0 rounded-full"

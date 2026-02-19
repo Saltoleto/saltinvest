@@ -39,6 +39,8 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 
 export default function DashboardPage() {
 
+  const [goalsCollapsed, setGoalsCollapsed] = React.useState(false);
+
   const equity = useAsync(() => getEquitySummary(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
   const fgc = useAsync(() => getFgcExposure(), []);
@@ -83,7 +85,20 @@ export default function DashboardPage() {
 
       {/* Goals */}
       <Card className="p-4">
-        <SectionHeader title="Progresso das metas" />
+        <SectionHeader
+          title="Progresso das metas"
+          right={
+            <button
+              type="button"
+              onClick={() => setGoalsCollapsed((v) => !v)}
+              className="text-sm text-sky-300 hover:text-sky-200"
+            >
+              {goalsCollapsed ? "Expandir" : "Recolher"}
+            </button>
+          }
+        />
+
+        {goalsCollapsed ? null : (
         <div className="mt-3 grid gap-3">
           {goals.loading ? (
             <div className="text-sm text-slate-400">Carregando metas...</div>
@@ -111,6 +126,7 @@ export default function DashboardPage() {
             <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
           )}
         </div>
+        )}
       </Card>
 
       {/* FGC */}

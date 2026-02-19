@@ -37,6 +37,14 @@ function monthStartISO(d = new Date()): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
 }
 
+function normalizeMonthISO(monthISO?: string): string {
+  // Accepts "YYYY-MM" or "YYYY-MM-01". Defaults to current month start.
+  if (!monthISO) return monthStartISO();
+  if (/^\d{4}-\d{2}$/.test(monthISO)) return `${monthISO}-01`;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(monthISO)) return `${monthISO.slice(0, 7)}-01`;
+  return monthStartISO();
+}
+
 function monthIndex(iso: string): number {
   const [y, m] = iso.split("-").map(Number);
   return y * 12 + (m - 1);
@@ -69,9 +77,9 @@ async function getContribSums(uid: string, goalIds: string[]): Promise<Record<st
   return sums;
 }
 
-export async function getMonthlyPlanSummary(): Promise<MonthlyPlanSummary | null> {
+export async function getMonthlyPlanSummary(monthISO?: string): Promise<MonthlyPlanSummary | null> {
   const uid = await requireUserId();
-  const m = monthStartISO();
+  const m = normalizeMonthISO(monthISO);
   const { data, error } = await supabase
     .from("v_plano_mensal_resumo")
     .select("usuario_id, mes_referencia, valor_total_sugerido, valor_total_aportado, valor_total_restante")
@@ -88,9 +96,9 @@ export async function getMonthlyPlanSummary(): Promise<MonthlyPlanSummary | null
   };
 }
 
-export async function listMonthlyPlanGoals(): Promise<MonthlyPlanGoalRow[]> {
+export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPlanGoalRow[]> {
   const uid = await requireUserId();
-  const m = monthStartISO();
+  const m = normalizeMonthISO(monthISO);
 
   const { data: detail, error: e1 } = await supabase
     .from("v_plano_mensal_detalhe")
@@ -141,8 +149,8 @@ export async function listMonthlyPlanGoals(): Promise<MonthlyPlanGoalRow[]> {
   });
 }
 
-export async function listMonthlyPlanRanking(): Promise<MonthlyPlanRankingRow[]> {
-  const rows = await listMonthlyPlanGoals();
+export async function listMonthlyPlanRanking(monthISO?: string): Promise<MonthlyPlanRankingRow[]> {
+  const rows = await listMonthlyPlanGoals(monthISO);
 
   // Heurística simples (client-side):
   // 1) menor meses restantes

@@ -1,19 +1,29 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
 import Badge from "@/ui/primitives/Badge";
+import Modal from "@/ui/primitives/Modal";
 import { useAsync } from "@/state/useAsync";
 import { deleteInvestment, listInvestments, setInvestmentRedeemed } from "@/services/investments";
 import { formatBRL, formatDateBR } from "@/lib/format";
 import { useToast } from "@/ui/feedback/Toast";
+import { InvestmentForm, type InvestmentFormHandle } from "./InvestmentFormPage";
 // NOTE: The primary "+" action for Investments lives in the TopBar.
 
 export default function InvestmentsPage() {
   const toast = useToast();
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const invs = useAsync(() => listInvestments(), []);
+
+  const modal = searchParams.get("modal");
+  const editId = searchParams.get("edit");
+  const isOpen = modal === "new" || !!editId;
+  const mode: "create" | "edit" = editId ? "edit" : "create";
+
+  const formRef = React.useRef<InvestmentFormHandle | null>(null);
+  const [formMeta, setFormMeta] = React.useState<{ isSaving: boolean; isBusy: boolean }>({ isSaving: false, isBusy: false });
 
   const [q, setQ] = React.useState("");
   const [showRedeemed, setShowRedeemed] = React.useState(false);
@@ -115,7 +125,7 @@ export default function InvestmentsPage() {
                   <div className="mt-3 flex flex-wrap gap-2 justify-end">
                     <Button
                       variant="secondary"
-                      onClick={() => navigate(`/app/investments/${r.id}/edit`)}
+                      onClick={() => setSearchParams({ edit: r.id })}
                       className="h-9 px-3"
                       disabled={r.is_redeemed}
                       title={r.is_redeemed ? "Investimentos resgatados não podem ser editados." : undefined}
@@ -151,6 +161,38 @@ export default function InvestmentsPage() {
           )}
         </div>
       </Card>
+
+      <Modal
+        open={isOpen}
+        title={mode === "edit" ? "Editar investimento" : "Novo investimento"}
+        onClose={() => setSearchParams({})}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSearchParams({})}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => void formRef.current?.save()}
+              disabled={formMeta.isBusy}
+            >
+              {formMeta.isSaving ? "Salvando..." : "Salvar"}
+            </Button>
+          </>
+        }
+      >
+        <InvestmentForm
+          ref={formRef}
+          mode={mode}
+          investmentId={editId ?? undefined}
+          onClose={() => setSearchParams({})}
+          onMetaChange={setFormMeta}
+          onSaved={() => {
+            setSearchParams({});
+            invs.reload();
+          }}
+        />
+      </Modal>
     </div>
   );
 }
+

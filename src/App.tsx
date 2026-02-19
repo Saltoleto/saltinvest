@@ -10,7 +10,6 @@ import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import MonthlyPlanPage from "@/pages/monthly/MonthlyPlanPage";
 import InvestmentsPage from "@/pages/investments/InvestmentsPage";
-import InvestmentFormPage from "@/pages/investments/InvestmentFormPage";
 import GoalsPage from "@/pages/goals/GoalsPage";
 import ClassesPage from "@/pages/classes/ClassesPage";
 import TargetsPage from "@/pages/targets/TargetsPage";
@@ -48,8 +47,7 @@ export default function App() {
           <Route path="monthly-plan" element={<MonthlyPlanPage />} />
 
           <Route path="investments" element={<InvestmentsPage />} />
-          <Route path="investments/new" element={<InvestmentFormPage mode="create" />} />
-          <Route path="investments/:id/edit" element={<InvestmentFormPage mode="edit" />} />
+
 
           <Route path="goals" element={<GoalsPage />} />
           <Route path="classes" element={<ClassesPage />} />
