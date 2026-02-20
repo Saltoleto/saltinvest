@@ -41,12 +41,15 @@ function ConcentrationCard({
 
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-slate-100 font-semibold">{title}</div>
+      {/* Header com alinhamento consistente (web/mobile) e sem sobreposição em títulos longos */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 text-slate-100 font-semibold leading-snug">
+          <span className="block break-words">{title}</span>
+        </div>
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2.5 text-sky-200 hover:bg-white/8 transition"
+          className="shrink-0 mt-0.5 rounded-xl2 border border-white/10 bg-white/5 p-2.5 text-sky-200 hover:bg-white/10 transition"
           aria-label={collapsed ? "Expandir" : "Recolher"}
         >
           {collapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}

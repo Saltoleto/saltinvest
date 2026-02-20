@@ -1,9 +1,15 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
+import Button from "@/ui/primitives/Button";
+import Modal from "@/ui/primitives/Modal";
 import { Icon } from "@/ui/layout/icons";
+import { useAuth } from "@/state/auth/AuthContext";
 
 export default function SettingsPage() {
+  const { user, signOut } = useAuth();
+  const [confirmOpen, setConfirmOpen] = React.useState(false);
+
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
@@ -51,6 +57,46 @@ export default function SettingsPage() {
           </Link>
         </div>
       </Card>
+
+      {/* Conta (visível no mobile, onde o sidebar pode ficar oculto) */}
+      <Card className="p-4 lg:hidden">
+        <div className="text-slate-100 font-semibold">Conta</div>
+        <div className="mt-1 text-sm text-slate-400">Gerencie sua sessão com segurança.</div>
+
+        <div className="mt-4 rounded-xl2 border border-white/10 bg-white/5 px-4 py-3">
+          <div className="text-xs text-slate-400">Logado como</div>
+          <div className="mt-1 text-sm text-slate-200 truncate">{user?.email ?? "—"}</div>
+        </div>
+
+        <Button variant="secondary" className="mt-4 w-full justify-center" onClick={() => setConfirmOpen(true)}>
+          <Icon name="logout" className="h-4 w-4" />
+          Sair
+        </Button>
+      </Card>
+
+      <Modal
+        open={confirmOpen}
+        title="Sair da conta"
+        onClose={() => setConfirmOpen(false)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirmOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={async () => {
+                setConfirmOpen(false);
+                await signOut();
+              }}
+            >
+              Sair
+            </Button>
+          </>
+        }
+      >
+        <div className="text-slate-200">Tem certeza que deseja sair?</div>
+        <div className="mt-2 text-sm text-slate-400">Você precisará fazer login novamente para acessar seus dados.</div>
+      </Modal>
     </div>
   );
 }

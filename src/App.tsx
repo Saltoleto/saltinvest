@@ -1,4 +1,5 @@
 import React from "react";
+import PwaPrompts from "@/pwa/PwaPrompts";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "@/state/auth/ProtectedRoute";
 import AppShell from "@/ui/layout/AppShell";
@@ -30,6 +31,7 @@ function RootRedirect() {
 export default function App() {
   return (
     <BrowserRouter>
+      <PwaPrompts />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
