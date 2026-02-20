@@ -20,6 +20,8 @@ export function Icon({
     | "x"
     | "chevronUp"
     | "chevronDown"
+    | "eye"
+    | "eyeOff"
     | "droplet"
     | "shield";
   className?: string;
@@ -135,6 +137,23 @@ export function Icon({
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="m6 9 6 6 6-6" />
+        </svg>
+      );
+
+    case "eye":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      );
+    case "eyeOff":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M10.58 10.58A3 3 0 0 0 12 15a3 3 0 0 0 1.42-.36" />
+          <path d="M9.88 5.09A10.43 10.43 0 0 1 12 5c6.5 0 10 7 10 7a18.28 18.28 0 0 1-3.4 4.2" />
+          <path d="M6.1 6.1A18.28 18.28 0 0 0 2 12s3.5 7 10 7a10.43 10.43 0 0 0 2.12-.21" />
+          <path d="M2 2l20 20" />
         </svg>
       );
 

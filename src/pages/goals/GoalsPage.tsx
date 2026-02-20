@@ -1,4 +1,5 @@
 import React from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
@@ -25,6 +26,8 @@ type FormState = {
 
 export default function GoalsPage() {
   const toast = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const goals = useAsync(() => listGoals(), []);
   const evol = useAsync(() => listGoalsEvolution(), []);
@@ -64,6 +67,21 @@ export default function GoalsPage() {
     reset();
     setOpen(true);
   }
+
+  React.useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    if (sp.get("modal") !== "new") return;
+
+    // Abre o modal via ação do TopBar e limpa o parâmetro para evitar reabertura.
+    openNew();
+    sp.delete("modal");
+    const nextSearch = sp.toString();
+    navigate(
+      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
+      { replace: true }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
 
   async function onSave() {
     const e: Record<string, string> = {};
@@ -168,23 +186,6 @@ export default function GoalsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4 flex items-center justify-between gap-3">
-        <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Defina objetivos e acompanhe evolução com alocações.</div>
-          <div className="mt-1 text-xs text-slate-500">Pelo modelo de dados, metas não são editáveis (apenas criar e excluir).</div>
-        </div>
-        <Button
-          onClick={openNew}
-          aria-label="Nova meta"
-          title="Nova meta"
-          className="h-10 w-10 px-0 rounded-full"
-        >
-          <Icon name="plus" className="h-5 w-5" />
-          <span className="sr-only">Nova meta</span>
-        </Button>
-      </Card>
-
       <Card className="p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -202,13 +203,15 @@ export default function GoalsPage() {
         </div>
 
         {filtersCollapsed ? null : (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Input label="Nome" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="mt-4 grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="lg:col-span-2">
+              <Input label="Nome" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
 
-            <div>
-              <label className="block text-xs text-slate-400">Status</label>
+            <div className="lg:col-span-1">
+              <label className="block text-sm text-slate-200 mb-2">Status</label>
               <select
-                className="mt-1 w-full rounded-xl2 border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
+                className="w-full h-11 rounded-xl2 border border-white/10 bg-white/5 px-3 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as any)}
               >
@@ -219,10 +222,10 @@ export default function GoalsPage() {
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs text-slate-400">Plano do mês</label>
+            <div className="lg:col-span-1">
+              <label className="block text-sm text-slate-200 mb-2">Plano do mês</label>
               <select
-                className="mt-1 w-full rounded-xl2 border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
+                className="w-full h-11 rounded-xl2 border border-white/10 bg-white/5 px-3 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
                 value={planFilter}
                 onChange={(e) => setPlanFilter(e.target.value as any)}
               >
@@ -232,8 +235,13 @@ export default function GoalsPage() {
               </select>
             </div>
 
-            <Input label="Data alvo (de)" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-            <Input label="Data alvo (até)" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            <div className="lg:col-span-1">
+              <Input label="Data alvo (de)" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            </div>
+
+            <div className="lg:col-span-1">
+              <Input label="Data alvo (até)" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+            </div>
           </div>
         )}
       </Card>

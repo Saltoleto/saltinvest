@@ -82,7 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
           return { error: "Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no .env.local." };
         }
-        const redirectTo = `${window.location.origin}/login`;
+        // Envia para uma rota dedicada onde o usuário define a nova senha.
+        // (Supabase inclui access_token/refresh_token no hash da URL quando o tipo é recovery.)
+        // Mantém consistência com o roteamento do app (prefixo /app).
+        // O App.tsx também mantém compatibilidade redirecionando /reset-password -> /app/reset-password.
+        const redirectTo = `${window.location.origin}/app/reset-password`;
         const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
         return error ? { error: error.message } : {};
       }

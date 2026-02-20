@@ -6,6 +6,7 @@ import AppShell from "@/ui/layout/AppShell";
 import LoginPage from "@/pages/auth/LoginPage";
 import SignUpPage from "@/pages/auth/SignUpPage";
 import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
+import NewPasswordPage from "@/pages/auth/NewPasswordPage";
 
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import MonthlyPlanPage from "@/pages/monthly/MonthlyPlanPage";
@@ -34,6 +35,9 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/reset" element={<ResetPasswordPage />} />
+        {/* Compat: mantém /reset-password, mas o app inteiro usa o prefixo /app */}
+        <Route path="/reset-password" element={<Navigate to="/app/reset-password" replace />} />
+        <Route path="/app/reset-password" element={<NewPasswordPage />} />
 
         <Route
           path="/app"

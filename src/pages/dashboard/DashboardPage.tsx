@@ -46,7 +46,7 @@ function ConcentrationCard({
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+          className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2.5 text-sky-200 hover:bg-white/8 transition"
           aria-label={collapsed ? "Expandir" : "Recolher"}
         >
           {collapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}

@@ -43,6 +43,18 @@ export default function TopBar() {
             <span className="sr-only">Novo investimento</span>
           </Button>
         ) : null}
+
+        {pathname === "/app/goals" ? (
+          <Button
+            onClick={() => navigate("/app/goals?modal=new")}
+            aria-label="Nova meta"
+            title="Nova meta"
+            className="h-10 w-10 px-0 rounded-full"
+          >
+            <Icon name="plus" className="h-5 w-5" />
+            <span className="sr-only">Nova meta</span>
+          </Button>
+        ) : null}
       </div>
     </Card>
   );
