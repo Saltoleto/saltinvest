@@ -18,6 +18,26 @@ body {
     #0B1220;
 }
 
+/*
+  UX premium: bloquear seleção/cópia de textos (anti-copy).
+  Mantemos seleção em inputs/textarea para usabilidade.
+*/
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+select,
+button,
+[contenteditable="true"],
+[contenteditable=""],
+[data-allow-select="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 @keyframes shimmer {
   100% {
     transform: translateX(100%);

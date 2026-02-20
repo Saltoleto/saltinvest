@@ -75,17 +75,22 @@ export default function InvestmentsPage() {
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
+        <div className="grid grid-cols-[1fr_auto] items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setFiltersCollapsed((v) => !v)}
+            className="min-w-0 text-left"
+            aria-label={filtersCollapsed ? "Expandir filtros" : "Recolher filtros"}
+          >
             <div className="text-slate-100 font-semibold">Filtros</div>
             <div className="text-sm text-slate-400">
               {goalId ? "1" : "0"} filtro(s) ativo(s){q.trim() ? " + busca" : ""}
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => setFiltersCollapsed((v) => !v)}
-            className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+            className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/10 transition"
             aria-label={filtersCollapsed ? "Expandir" : "Recolher"}
           >
             {filtersCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Button from "@/ui/primitives/Button";
 import Input from "@/ui/primitives/Input";
+import Select from "@/ui/primitives/Select";
 import Modal from "@/ui/primitives/Modal";
 import Toggle from "@/ui/primitives/Toggle";
 import Badge from "@/ui/primitives/Badge";
@@ -187,15 +188,20 @@ export default function GoalsPage() {
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-slate-100 font-semibold">Filtros</div>
-            <div className="text-sm text-slate-400">{filtered.length} meta(s)</div>
-          </div>
+        <div className="grid grid-cols-[1fr_auto] items-start gap-3">
           <button
             type="button"
             onClick={() => setFiltersCollapsed((v) => !v)}
-            className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+            className="min-w-0 text-left"
+            aria-label={filtersCollapsed ? "Expandir filtros" : "Recolher filtros"}
+          >
+            <div className="text-slate-100 font-semibold">Filtros</div>
+            <div className="text-sm text-slate-400">{filtered.length} meta(s)</div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFiltersCollapsed((v) => !v)}
+            className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/10 transition"
             aria-label={filtersCollapsed ? "Expandir" : "Recolher"}
           >
             {filtersCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
@@ -209,30 +215,20 @@ export default function GoalsPage() {
             </div>
 
             <div className="lg:col-span-1">
-              <label className="block text-sm text-slate-200 mb-2">Status</label>
-              <select
-                className="w-full h-11 rounded-xl2 border border-white/10 bg-white/5 px-3 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-              >
+              <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
                 <option value="all">Todos</option>
                 <option value="active">Em andamento</option>
                 <option value="overdue">Vencida</option>
                 <option value="done">Concluída</option>
-              </select>
+              </Select>
             </div>
 
             <div className="lg:col-span-1">
-              <label className="block text-sm text-slate-200 mb-2">Plano do mês</label>
-              <select
-                className="w-full h-11 rounded-xl2 border border-white/10 bg-white/5 px-3 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
-                value={planFilter}
-                onChange={(e) => setPlanFilter(e.target.value as any)}
-              >
+              <Select label="Plano do mês" value={planFilter} onChange={(e) => setPlanFilter(e.target.value as any)}>
                 <option value="all">Todas</option>
                 <option value="in">No plano</option>
                 <option value="out">Fora do plano</option>
-              </select>
+              </Select>
             </div>
 
             <div className="lg:col-span-1">

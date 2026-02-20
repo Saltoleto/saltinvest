@@ -1,14 +1,15 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
-import Progress from "@/ui/primitives/Progress";
+import Button from "@/ui/primitives/Button";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
 import { getEquitySummary } from "@/services/analytics";
-import { listGoalsEvolution } from "@/services/goals";
 import { listInvestments } from "@/services/investments";
+import { listYearGoalProjections } from "@/services/yearly";
 
 function pct(part: number, total: number): number {
   if (!total) return 0;
@@ -41,15 +42,22 @@ function ConcentrationCard({
 
   return (
     <Card className="p-4">
-      {/* Header com alinhamento consistente (web/mobile) e sem sobreposição em títulos longos */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 text-slate-100 font-semibold leading-snug">
-          <span className="block break-words">{title}</span>
-        </div>
+      {/* Header: título clicável + ícone sempre bem alinhado (web/mobile). */}
+      <div className="grid grid-cols-[1fr_auto] items-start gap-3">
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="shrink-0 mt-0.5 rounded-xl2 border border-white/10 bg-white/5 p-2.5 text-sky-200 hover:bg-white/10 transition"
+          className="min-w-0 text-left"
+          aria-label={collapsed ? `Expandir ${title}` : `Recolher ${title}`}
+        >
+          <span className="block text-slate-100 font-semibold leading-snug break-words pr-1">
+            {title}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/10 transition"
           aria-label={collapsed ? "Expandir" : "Recolher"}
         >
           {collapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
@@ -93,7 +101,9 @@ function ConcentrationCard({
           </div>
         </>
       ) : (
-        <EmptyState title="Sem dados" subtitle="Cadastre investimentos para ver a concentração." />
+        <div className="mt-3">
+          <EmptyState title="Sem dados" subtitle="Cadastre investimentos para ver a concentração." />
+        </div>
       )}
     </Card>
   );
@@ -145,13 +155,164 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
+function YearGoalsProjectionCard({
+  rows,
+  loading
+}: {
+  rows: {
+    goal_id: string;
+    name: string;
+    target_value: number;
+    contributed_ytd: number;
+    suggested_remaining_year: number;
+    projected_end_year: number;
+    progress_ytd_pct: number;
+    progress_projected_pct: number;
+  }[];
+  loading: boolean;
+}) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const [collapsed, setCollapsed] = React.useState(false);
+
+  const totals = React.useMemo(() => {
+    const ytd = rows.reduce((s, r) => s + (Number(r.contributed_ytd) || 0), 0);
+    const projAdd = rows.reduce((s, r) => s + (Number(r.suggested_remaining_year) || 0), 0);
+    return { ytd, projAdd, projected: ytd + projAdd };
+  }, [rows]);
+
+  const top = React.useMemo(() => {
+    // Mostra as metas mais relevantes pelo impacto da projeção
+    return [...rows]
+      .sort((a, b) => (b.suggested_remaining_year || 0) - (a.suggested_remaining_year || 0))
+      .slice(0, 5);
+  }, [rows]);
+
+  return (
+    <Card className="p-4">
+      <div className="grid grid-cols-[1fr_auto] items-start gap-3">
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="min-w-0 text-left"
+          aria-label={collapsed ? "Expandir evolução anual" : "Recolher evolução anual"}
+        >
+          <div className="text-slate-100 font-semibold">Evolução anual das metas</div>
+          <div className="mt-1 text-sm text-slate-400">
+            {loading
+              ? "Calculando..."
+              : `Em ${year}: ${formatBRL(totals.ytd)} até agora • Projeção: ${formatBRL(totals.projected)} (${formatBRL(
+                  totals.projAdd
+                )} a mais)`}
+          </div>
+        </button>
+
+        <div className="shrink-0 flex items-center gap-2">
+          <Link to="/app/metas/ano" className="hidden sm:block">
+            <Button variant="secondary" className="h-9 px-3">
+              Ver detalhes
+            </Button>
+          </Link>
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/10 transition"
+            aria-label={collapsed ? "Expandir" : "Recolher"}
+          >
+            {collapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
+
+      {collapsed ? null : (
+        <>
+          {loading ? (
+            <div className="mt-4 grid gap-3">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : rows.length ? (
+            <div className="mt-4 grid gap-3">
+              {/* Totais: barra premium */}
+              <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm text-slate-400">Avanço no ano</div>
+                  <Badge variant="info">Projeção até Dez</Badge>
+                </div>
+                <div className="mt-3 h-3 rounded-full bg-white/10 overflow-hidden flex">
+                  {/* já realizado */}
+                  <div className="bg-sky-400" style={{ width: `${Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100)}%` }} />
+                  {/* projeção */}
+                  <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, 100 - Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100))}%` }} />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <div className="text-slate-300">{formatBRL(totals.ytd)} realizado</div>
+                  <div className="text-slate-300">{formatBRL(totals.projected)} projetado</div>
+                </div>
+              </div>
+
+              {/* Destaques por meta */}
+              <div className="grid gap-2">
+                {top.map((g) => {
+                  const target = Math.max(0, Number(g.target_value) || 0);
+                  const ytd = Math.max(0, Number(g.contributed_ytd) || 0);
+                  const proj = Math.max(ytd, Number(g.projected_end_year) || 0);
+                  const ytdPct = target > 0 ? Math.min(100, (ytd / target) * 100) : 0;
+                  const projPct = target > 0 ? Math.min(100, (proj / target) * 100) : 0;
+
+                  return (
+                    <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-slate-100 font-medium truncate">{g.name}</div>
+                          <div className="mt-1 text-sm text-slate-400">
+                            {formatBRL(ytd)} agora • {formatBRL(proj)} até Dez • alvo {formatBRL(target)}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-slate-100 font-semibold">{formatPercent(ytdPct)}</div>
+                          <div className="text-xs text-slate-400">→ {formatPercent(projPct)}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full flex">
+                          <div className="bg-sky-400" style={{ width: `${ytdPct}%` }} />
+                          <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, projPct - ytdPct)}%` }} />
+                        </div>
+                      </div>
+
+                      {g.suggested_remaining_year > 0 ? (
+                        <div className="mt-2 text-xs text-slate-400">
+                          Mantendo o plano: +{formatBRL(g.suggested_remaining_year)} até o fim do ano
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-slate-500">Sem projeção para o restante do ano (fora do plano mensal).</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="text-xs text-slate-500">
+                Projeção baseada nos valores planejados do Plano do mês até Dezembro.
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4">
+              <EmptyState title="Sem metas" subtitle="Cadastre metas e/ou ative a opção de plano mensal para ver projeções." />
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
-
-  // Default collapsed for faster perceived load + less visual noise.
-  const [goalsCollapsed, setGoalsCollapsed] = React.useState(true);
-
   const equity = useAsync(() => getEquitySummary(), []);
-  const goals = useAsync(() => listGoalsEvolution(), []);
+  const yearGoals = useAsync(() => listYearGoalProjections(), []);
   const invs = useAsync(() => listInvestments(), []);
 
   const allocationsByClass = React.useMemo(() => {
@@ -190,8 +351,6 @@ export default function DashboardPage() {
   const totalEquity = Number(equity.data?.total_equity ?? 0);
   const liquidEquity = Number(equity.data?.liquid_equity ?? 0);
   const fgcTotal = Number(equity.data?.fgc_protected_total ?? 0);
-
-  const goalRows = goals.data ?? [];
 
   return (
     <div className="grid gap-4 lg:gap-6">
@@ -270,70 +429,8 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Goals (last) */}
-      <Card className="p-4">
-        <SectionHeader
-          title="Progresso das metas"
-          right={
-            <button
-              type="button"
-              onClick={() => setGoalsCollapsed((v) => !v)}
-              className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
-              aria-label={goalsCollapsed ? "Expandir" : "Recolher"}
-            >
-              {goalsCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
-            </button>
-          }
-        />
-
-        {goalsCollapsed ? null : (
-          <div className="mt-3 grid gap-3">
-            {goals.loading ? (
-              <>
-                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="mt-2 h-4 w-64" />
-                  <Skeleton className="mt-4 h-2 w-full" />
-                  <Skeleton className="mt-2 h-3 w-16" />
-                </div>
-                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="mt-2 h-4 w-56" />
-                  <Skeleton className="mt-4 h-2 w-full" />
-                  <Skeleton className="mt-2 h-3 w-16" />
-                </div>
-              </>
-            ) : goalRows.length ? (
-              goalRows.map((g) => (
-                <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-slate-100 font-medium">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-400">
-                        {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
-                      </div>
-                    </div>
-                    <Badge variant={g.percent_progress >= 100 ? "success" : g.is_monthly_plan ? "info" : "neutral"}>
-                      {g.percent_progress >= 100 ? "Concluída" : g.is_monthly_plan ? (
-                        <span className="inline-flex items-center" title="No plano" aria-label="No plano">
-                          <Icon name="spark" className="h-4 w-4" />
-                          <span className="sr-only">No plano</span>
-                        </span>
-                      ) : "Fora do plano"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3">
-                    <Progress value={Number(g.percent_progress) || 0} />
-                    <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <EmptyState title="Nenhuma meta cadastrada" subtitle="Crie metas para acompanhar evolução e planejar aportes." />
-            )}
-          </div>
-        )}
-      </Card>
+      {/* Nova entrega de alto valor: visão de avanço anual + projeção */}
+      <YearGoalsProjectionCard rows={yearGoals.data ?? []} loading={yearGoals.loading} />
     </div>
   );
 }
