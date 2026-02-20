@@ -7,7 +7,7 @@ const mobileItems = navMainItems.filter((x) => ["/app/dashboard", "/app/investme
 
 export default function MobileNav() {
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200/70 bg-white">
+    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-slate-950/85 backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-3 py-2">
         <div className="grid grid-cols-5 gap-0">
           {mobileItems.map((item) => (
@@ -17,7 +17,7 @@ export default function MobileNav() {
               className={({ isActive }) =>
                 [
                   "flex flex-col items-center justify-center gap-0 rounded-xl2 px-2 py-2 text-[11px] transition",
-                  isActive ? "text-indigo-600" : "text-slate-700 hover:text-slate-900"
+                  isActive ? "text-white" : "text-slate-400 hover:text-slate-200"
                 ].join(" ")
               }
             >

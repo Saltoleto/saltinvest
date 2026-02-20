@@ -8,8 +8,7 @@ export default {
         xl2: "1.25rem"
       },
       boxShadow: {
-        // Modernize-like soft elevation (lighter, less "foggy")
-        soft: "0 10px 30px rgba(15,23,42,.08)"
+        soft: "0 18px 45px rgba(0,0,0,.25)"
       }
     }
   },

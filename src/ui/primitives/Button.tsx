@@ -12,12 +12,12 @@ export default function Button({
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: Size }) {
   const v =
     variant === "primary"
-      ? "bg-indigo-600 text-white hover:bg-indigo-500"
+      ? "bg-gradient-to-r from-emerald-500/90 to-sky-400/90 text-slate-950 hover:from-emerald-400 hover:to-sky-300"
       : variant === "secondary"
-        ? "bg-white text-slate-900 hover:bg-slate-50 border border-slate-200/70"
+        ? "bg-white/8 text-slate-100 hover:bg-white/12 border border-white/10"
         : variant === "danger"
           ? "bg-red-500/90 text-white hover:bg-red-400"
-          : "bg-transparent text-slate-700 hover:bg-slate-50";
+          : "bg-transparent text-slate-200 hover:bg-white/8";
 
   const s = size === "sm" ? "h-9 px-3 text-sm" : size === "lg" ? "h-12 px-5 text-base" : "h-10 px-4 text-sm";
 
@@ -25,7 +25,7 @@ export default function Button({
     <button
       {...props}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl2 font-medium shadow-soft shadow-slate-900/5 focus:outline-none focus:ring-2 focus:ring-indigo-400/30 disabled:opacity-60 disabled:pointer-events-none transition",
+        "inline-flex items-center justify-center gap-2 rounded-xl2 font-medium shadow-soft shadow-black/10 focus:outline-none focus:ring-2 focus:ring-sky-400/50 disabled:opacity-60 disabled:pointer-events-none transition",
         v,
         s,
         className

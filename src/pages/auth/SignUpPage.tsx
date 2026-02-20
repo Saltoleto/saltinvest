@@ -48,7 +48,7 @@ export default function SignUpPage() {
     <AuthShell title="Criar conta" subtitle="Uma carteira, várias metas, visão clara.">
       <form onSubmit={onSubmit} className="grid gap-4">
         {configError ? (
-          <div className="rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-800">
+          <div className="rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
             {configError}
           </div>
         ) : null}
@@ -84,7 +84,7 @@ export default function SignUpPage() {
         />
 
         {error ? (
-          <div className="rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-700">
+          <div className="rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
             {error}
           </div>
         ) : null}
@@ -94,7 +94,7 @@ export default function SignUpPage() {
         </Button>
 
         <div className="text-sm">
-          <Link to="/login" className="text-slate-700 hover:text-slate-900">
+          <Link to="/login" className="text-slate-300 hover:text-white">
             Já tenho conta
           </Link>
         </div>

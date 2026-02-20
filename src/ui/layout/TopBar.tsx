@@ -27,8 +27,8 @@ export default function TopBar() {
   return (
     <Card className="px-4 py-3 flex items-center justify-between">
       <div>
-        <div className="text-slate-900 font-semibold">{getTitle(pathname)}</div>
-        <div className="text-xs text-slate-600">Concentre, planeje, evolua.</div>
+        <div className="text-slate-100 font-semibold">{getTitle(pathname)}</div>
+        <div className="text-xs text-slate-400">Concentre, planeje, evolua.</div>
       </div>
 
       <div className="flex items-center gap-2">

@@ -41,7 +41,7 @@ export default function LoginPage() {
     <AuthShell title="Entrar" subtitle="Acesse sua carteira e seu plano do mês.">
       <form onSubmit={onSubmit} className="grid gap-4">
         {configError ? (
-          <div className="rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-800">
+          <div className="rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
             {configError}
           </div>
         ) : null}
@@ -66,7 +66,7 @@ export default function LoginPage() {
         />
 
         {error ? (
-          <div className="rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-700">
+          <div className="rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">
             {error}
           </div>
         ) : null}
@@ -76,10 +76,10 @@ export default function LoginPage() {
         </Button>
 
         <div className="flex items-center justify-between text-sm">
-          <Link to="/reset" className="text-sky-300 hover:text-sky-700">
+          <Link to="/reset" className="text-sky-300 hover:text-sky-200">
             Esqueci minha senha
           </Link>
-          <Link to="/signup" className="text-slate-700 hover:text-slate-900">
+          <Link to="/signup" className="text-slate-300 hover:text-white">
             Criar conta
           </Link>
         </div>

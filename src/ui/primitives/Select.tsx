@@ -174,12 +174,12 @@ export default function Select({
             ref={popRef}
             style={{ left: pos.left, top: pos.top + 8, width: pos.width, position: "fixed" }}
             className={cn(
-              "z-[9999] rounded-2xl border border-slate-200/70",
-              "bg-white shadow-soft overflow-hidden"
+              "z-[9999] rounded-2xl border border-white/10",
+              "bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden"
             )}
             role="listbox"
           >
-            <div className="p-2 border-b border-slate-200/70">
+            <div className="p-2 border-b border-white/10">
               <input
                 ref={searchRef}
                 value={q}
@@ -188,13 +188,13 @@ export default function Select({
                   setActive(0);
                 }}
                 placeholder="Buscar..."
-                className="w-full h-10 rounded-xl bg-white border border-slate-200/70 px-3 text-slate-900 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-400/25"
+                className="w-full h-10 rounded-xl bg-white/5 border border-white/10 px-3 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400/30"
               />
             </div>
 
             <div className="max-h-64 overflow-auto p-1">
               {filtered.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-slate-500">Nenhum resultado.</div>
+                <div className="px-3 py-3 text-sm text-slate-400">Nenhum resultado.</div>
               ) : (
                 filtered.map((opt, idx) => {
                   const isSel = opt.value === current;
@@ -208,15 +208,15 @@ export default function Select({
                       disabled={opt.disabled}
                       className={cn(
                         "w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-3",
-                        opt.disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50",
-                        isAct ? "bg-slate-50" : "",
-                        isSel ? "border border-sky-400/30" : "border border-transparent"
+                        opt.disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-white/7",
+                        isAct ? "bg-white/7" : "",
+                        isSel ? "border border-sky-400/20" : "border border-transparent"
                       )}
                       onMouseEnter={() => setActive(idx)}
                       onClick={() => pick(opt)}
                     >
-                      <span className="truncate text-slate-900">{opt.label}</span>
-                      {isSel ? <span className="text-sky-600">✓</span> : <span className="text-transparent">✓</span>}
+                      <span className="truncate text-slate-100">{opt.label}</span>
+                      {isSel ? <span className="text-sky-300">✓</span> : <span className="text-transparent">✓</span>}
                     </button>
                   );
                 })
@@ -229,7 +229,7 @@ export default function Select({
 
   return (
     <label className={cn("block", className)}>
-      {label ? <div className="text-sm text-slate-700 mb-2">{label}</div> : null}
+      {label ? <div className="text-sm text-slate-200 mb-2">{label}</div> : null}
 
       {/* Hidden input to keep native forms happy */}
       {name ? <input type="hidden" name={name} value={current} required={required} /> : null}
@@ -243,22 +243,22 @@ export default function Select({
           aria-haspopup="listbox"
           aria-expanded={open}
           className={cn(
-            "w-full h-11 rounded-xl2 bg-slate-50 border border-slate-200/70 px-3 text-left text-slate-900",
-            "focus:outline-none focus:ring-2 focus:ring-sky-400/25 focus:border-sky-400/30 transition",
+            "w-full h-11 rounded-xl2 bg-white/5 border border-white/10 px-3 text-left text-slate-100",
+            "focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/30 transition",
             "flex items-center justify-between gap-3",
-            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-100",
+            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-white/7",
             error ? "border-red-400/40 focus:ring-red-400/30" : ""
           )}
           onClick={() => !disabled && setOpen((v) => !v)}
         >
-          <span className={cn("truncate", !selected?.label ? "text-slate-500" : "")}>{selected?.label || "Selecionar"}</span>
-          <span className={cn("text-slate-500 transition", open ? "rotate-180" : "")}>▾</span>
+          <span className={cn("truncate", !selected?.label ? "text-slate-400" : "")}>{selected?.label || "Selecionar"}</span>
+          <span className={cn("text-slate-300 transition", open ? "rotate-180" : "")}>▾</span>
         </button>
 
         {popover}
       </div>
 
-      {error ? <div className="mt-2 text-sm text-red-600">{error}</div> : hint ? <div className="mt-2 text-sm text-slate-600">{hint}</div> : null}
+      {error ? <div className="mt-2 text-sm text-red-300">{error}</div> : hint ? <div className="mt-2 text-sm text-slate-400">{hint}</div> : null}
     </label>
   );
 }

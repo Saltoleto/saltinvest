@@ -40,42 +40,42 @@ function ConcentrationCard({
 
   return (
     <Card className="p-4">
-      <div className="text-slate-900 font-semibold">{title}</div>
+      <div className="text-slate-100 font-semibold">{title}</div>
 
       {total ? (
         <>
           <div className="mt-3 grid gap-2">
             {a ? (
-              <div className="rounded-xl2 border border-slate-200/70 bg-white px-3 py-3 flex items-center justify-between gap-3">
+              <div className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={`h-2.5 w-2.5 rounded-full ${accentA}`} />
-                  <span className="text-slate-800 text-sm font-medium truncate">{labelA ?? a.name}</span>
+                  <span className="text-slate-200 text-sm font-medium truncate">{labelA ?? a.name}</span>
                 </div>
                 <div className="flex items-baseline gap-3 shrink-0">
-                  <span className="text-slate-900 font-semibold">{formatPercent(aPct)}</span>
-                  <span className="text-slate-700 text-sm">{formatBRL(a.value)}</span>
+                  <span className="text-slate-100 font-semibold">{formatPercent(aPct)}</span>
+                  <span className="text-slate-300 text-sm">{formatBRL(a.value)}</span>
                 </div>
               </div>
             ) : null}
 
             {b ? (
-              <div className="rounded-xl2 border border-slate-200/70 bg-white px-3 py-3 flex items-center justify-between gap-3">
+              <div className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className={`h-2.5 w-2.5 rounded-full ${accentB}`} />
-                  <span className="text-slate-800 text-sm font-medium truncate">{labelB ?? b.name}</span>
+                  <span className="text-slate-200 text-sm font-medium truncate">{labelB ?? b.name}</span>
                 </div>
                 <div className="flex items-baseline gap-3 shrink-0">
-                  <span className="text-slate-900 font-semibold">{formatPercent(bPct)}</span>
-                  <span className="text-slate-700 text-sm">{formatBRL(b.value)}</span>
+                  <span className="text-slate-100 font-semibold">{formatPercent(bPct)}</span>
+                  <span className="text-slate-300 text-sm">{formatBRL(b.value)}</span>
                 </div>
               </div>
             ) : null}
           </div>
 
-          <div className="mt-3 h-2 rounded-full bg-slate-50 overflow-hidden flex">
+          <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden flex">
             <div className={accentA} style={{ width: `${aPct}%` }} />
             <div className={accentB} style={{ width: `${bPct}%` }} />
-            <div className="bg-slate-50" style={{ width: `${restPct}%` }} />
+            <div className="bg-white/10" style={{ width: `${restPct}%` }} />
           </div>
         </>
       ) : (
@@ -88,9 +88,9 @@ function ConcentrationCard({
 function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
     <Card className="p-4">
-      <div className="text-xs text-slate-600">{title}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-900">{value}</div>
-      <div className="mt-2 text-sm text-slate-600">{subtitle}</div>
+      <div className="text-xs text-slate-400">{title}</div>
+      <div className="mt-1 text-2xl font-semibold text-slate-100">{value}</div>
+      <div className="mt-2 text-sm text-slate-400">{subtitle}</div>
     </Card>
   );
 }
@@ -98,7 +98,7 @@ function StatCard({ title, value, subtitle }: { title: string; value: string; su
 function SectionHeader({ title, right }: { title: string; right?: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <div className="text-slate-900 font-semibold">{title}</div>
+      <div className="text-slate-100 font-semibold">{title}</div>
       {right}
     </div>
   );
@@ -106,9 +106,9 @@ function SectionHeader({ title, right }: { title: string; right?: React.ReactNod
 
 function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="rounded-xl2 border border-slate-200/70 bg-white p-5 text-center">
-      <div className="text-slate-900 font-medium">{title}</div>
-      <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
+    <div className="rounded-xl2 border border-white/10 bg-white/5 p-5 text-center">
+      <div className="text-slate-100 font-medium">{title}</div>
+      <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
     </div>
   );
 }
@@ -246,7 +246,7 @@ export default function DashboardPage() {
             <button
               type="button"
               onClick={() => setGoalsCollapsed((v) => !v)}
-              className="rounded-xl2 border border-slate-200/70 bg-white p-2 text-sky-700 hover:bg-slate-50 transition"
+              className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
               aria-label={goalsCollapsed ? "Expandir" : "Recolher"}
             >
               {goalsCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
@@ -258,13 +258,13 @@ export default function DashboardPage() {
           <div className="mt-3 grid gap-3">
             {goals.loading ? (
               <>
-                <div className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="mt-2 h-4 w-64" />
                   <Skeleton className="mt-4 h-2 w-full" />
                   <Skeleton className="mt-2 h-3 w-16" />
                 </div>
-                <div className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+                <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                   <Skeleton className="h-4 w-28" />
                   <Skeleton className="mt-2 h-4 w-56" />
                   <Skeleton className="mt-4 h-2 w-full" />
@@ -273,11 +273,11 @@ export default function DashboardPage() {
               </>
             ) : goalRows.length ? (
               goalRows.map((g) => (
-                <div key={g.goal_id} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+                <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-slate-900 font-medium">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-600">
+                      <div className="text-slate-100 font-medium">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-400">
                         {formatBRL(g.current_contributed)} de {formatBRL(g.target_value)} • {g.days_remaining} dia(s) restantes
                       </div>
                     </div>
@@ -292,7 +292,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="mt-3">
                     <Progress value={Number(g.percent_progress) || 0} />
-                    <div className="mt-2 text-xs text-slate-600">{formatPercent(Number(g.percent_progress) || 0)}</div>
+                    <div className="mt-2 text-xs text-slate-400">{formatPercent(Number(g.percent_progress) || 0)}</div>
                   </div>
                 </div>
               ))

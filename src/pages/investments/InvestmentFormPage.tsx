@@ -272,14 +272,14 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
       ) : (
         <>
           {isRedeemed ? (
-            <div className="rounded-xl2 border border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-700">
+            <div className="rounded-xl2 border border-amber-400/25 bg-amber-400/5 p-3 text-sm text-amber-200">
               Este investimento está resgatado e não pode ser editado.
             </div>
           ) : null}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card className="p-4">
-              <div className="text-slate-900 font-semibold">Detalhes</div>
+              <div className="text-slate-100 font-semibold">Detalhes</div>
               <div className="mt-4 grid gap-4">
                 <Input label="Nome" placeholder="Ex: CDB 12% 2028" value={name} error={errs.name} onChange={(e) => setName(e.target.value)} />
 
@@ -329,47 +329,47 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
 
             <Card className="p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-slate-900 font-semibold">Distribuição em metas</div>
+                <div className="text-slate-100 font-semibold">Distribuição em metas</div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200/70 bg-white px-3 py-2 text-sm text-slate-900 hover:bg-slate-50 active:bg-slate-50"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 hover:bg-white/10 active:bg-white/15"
                   onClick={autoDistribute}
                 >
                   Auto-distribuir
                 </button>
               </div>
 
-              <div className="mt-2 text-sm text-slate-600">
-                Total: <span className="text-slate-900 font-medium">{formatBRL(total)}</span> • Alocado:{" "}
-                <span className={"font-medium " + (overAllocated ? "text-red-600" : "text-slate-900")}>{formatBRL(allocatedTotal)}</span> • Restante:{" "}
-                <span className="text-slate-900 font-medium">{formatBRL(remainingToAllocate)}</span>
+              <div className="mt-2 text-sm text-slate-400">
+                Total: <span className="text-slate-100 font-medium">{formatBRL(total)}</span> • Alocado:{" "}
+                <span className={"font-medium " + (overAllocated ? "text-red-200" : "text-slate-100")}>{formatBRL(allocatedTotal)}</span> • Restante:{" "}
+                <span className="text-slate-100 font-medium">{formatBRL(remainingToAllocate)}</span>
               </div>
 
-              {errs.alloc ? <div className="mt-3 rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-600">{errs.alloc}</div> : null}
+              {errs.alloc ? <div className="mt-3 rounded-xl2 border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-200">{errs.alloc}</div> : null}
 
               <div className="mt-4 grid gap-3">
                 {(allocations.length ? allocations : []).map((g) => (
-                  <div key={g.goal_id} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+                  <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-slate-900 font-medium flex items-center gap-2">
+                        <div className="text-slate-100 font-medium flex items-center gap-2">
                           {g.name}
                           {g.is_monthly_plan ? <Badge variant="info">Plano</Badge> : <Badge variant="neutral">—</Badge>}
                         </div>
-                        <div className="mt-1 text-xs text-slate-600">
+                        <div className="mt-1 text-xs text-slate-400">
                           Progresso: {formatPercent(g.percent_progress)} • {g.days_remaining} dia(s) restantes
                         </div>
                         {g.is_monthly_plan && g.suggested > 0 ? (
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                            <span className="text-slate-600">Sugerido agora:</span>
+                            <span className="text-slate-400">Sugerido agora:</span>
                             <button
                               type="button"
                               onClick={() => applySuggested(g.goal_id)}
-                              className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-indigo-700 hover:bg-indigo-100 active:bg-indigo-100"
+                              className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-slate-100 hover:bg-white/10 active:bg-white/15"
                               title="Preencher com o valor sugerido do mês"
                             >
                               {formatBRL(g.suggested)}
-                              <span className="text-indigo-700/80">• aplicar</span>
+                              <span className="text-slate-300/80">• aplicar</span>
                             </button>
                           </div>
                         ) : null}
@@ -377,7 +377,7 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                       <div className="w-32">
                         <Input
                           label="Aporte (R$)"
-                          placeholder="R$ 0,00"
+                          placeholder={g.is_monthly_plan && g.suggested > 0 ? formatBRL(g.suggested) : "R$ 0,00"}
                           inputMode="numeric"
                           value={alloc[g.goal_id] ?? ""}
                           onChange={(e) => setAllocation(g.goal_id, maskBRLCurrencyInput(e.target.value))}
@@ -391,9 +391,9 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                 ))}
 
                 {!allocations.length ? (
-                  <div className="rounded-xl2 border border-slate-200/70 bg-white p-5 text-center">
-                    <div className="text-slate-900 font-medium">Nenhuma meta cadastrada</div>
-                    <div className="mt-1 text-sm text-slate-600">Crie metas para distribuir aportes.</div>
+                  <div className="rounded-xl2 border border-white/10 bg-white/5 p-5 text-center">
+                    <div className="text-slate-100 font-medium">Nenhuma meta cadastrada</div>
+                    <div className="mt-1 text-sm text-slate-400">Crie metas para distribuir aportes.</div>
                   </div>
                 ) : null}
               </div>

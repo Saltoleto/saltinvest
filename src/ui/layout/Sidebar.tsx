@@ -14,8 +14,8 @@ function Brand() {
         SI
       </div>
       <div>
-        <div className="font-semibold text-slate-900 leading-tight">SaltInvest</div>
-        <div className="text-xs text-slate-600">Gestão premium</div>
+        <div className="font-semibold text-slate-100 leading-tight">SaltInvest</div>
+        <div className="text-xs text-slate-400">Gestão premium</div>
       </div>
     </div>
   );
@@ -38,9 +38,7 @@ export default function Sidebar() {
               className={({ isActive }) =>
                 [
                   "flex items-center gap-3 rounded-xl2 px-3 py-2.5 text-sm transition border",
-                  isActive
-                    ? "bg-indigo-600 text-white border-indigo-600/20 shadow-soft"
-                    : "border-transparent hover:bg-slate-50 text-slate-700"
+                  isActive ? "bg-white/10 border-white/15 text-white" : "border-transparent hover:bg-white/6 text-slate-200"
                 ].join(" ")
               }
             >
@@ -50,9 +48,9 @@ export default function Sidebar() {
           ))}
         </div>
 
-        <div className="mt-4 border-t border-slate-200/70 pt-4 px-2">
-          <div className="text-xs text-slate-600">Logado como</div>
-          <div className="text-sm text-slate-800 truncate">{user?.email ?? "—"}</div>
+        <div className="mt-4 border-t border-white/10 pt-4 px-2">
+          <div className="text-xs text-slate-400">Logado como</div>
+          <div className="text-sm text-slate-200 truncate">{user?.email ?? "—"}</div>
 
           <Button variant="secondary" className="mt-3 w-full justify-center" onClick={() => setConfirmOpen(true)}>
             <Icon name="logout" className="h-4 w-4" />
@@ -81,8 +79,8 @@ export default function Sidebar() {
           </>
         }
       >
-        <div className="text-slate-800">Tem certeza que deseja sair?</div>
-        <div className="mt-2 text-sm text-slate-600">Você precisará fazer login novamente para acessar seus dados.</div>
+        <div className="text-slate-200">Tem certeza que deseja sair?</div>
+        <div className="mt-2 text-sm text-slate-400">Você precisará fazer login novamente para acessar seus dados.</div>
       </Modal>
     </div>
   );

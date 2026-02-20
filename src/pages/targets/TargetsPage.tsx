@@ -81,13 +81,13 @@ export default function TargetsPage() {
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-slate-900 font-semibold">Alvos</div>
-            <div className="mt-1 text-sm text-slate-600">Defina a distribuição ideal por classe (recomendado: total = 100%).</div>
+            <div className="text-slate-100 font-semibold">Alvos</div>
+            <div className="mt-1 text-sm text-slate-400">Defina a distribuição ideal por classe (recomendado: total = 100%).</div>
           </div>
           <div className="flex items-center gap-3 sm:justify-end">
             <div className="text-right">
-              <div className="text-xs text-slate-600">Total</div>
-              <div className="text-2xl font-semibold text-slate-900 leading-none">{total.toFixed(1)}%</div>
+              <div className="text-xs text-slate-400">Total</div>
+              <div className="text-2xl font-semibold text-slate-100 leading-none">{total.toFixed(1)}%</div>
             </div>
             <Badge variant={totalTone === "success" ? "success" : totalTone === "warning" ? "warning" : "danger"}>
               {totalTone === "success" ? "OK" : totalTone === "warning" ? `Falta ${Math.abs(deltaTo100).toFixed(1)}%` : `Excesso ${Math.abs(deltaTo100).toFixed(1)}%`}
@@ -108,7 +108,7 @@ export default function TargetsPage() {
         {classes.loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <Skeleton className="h-4 w-36" />
@@ -129,11 +129,11 @@ export default function TargetsPage() {
             {(classes.data ?? []).map((c) => {
               const pct = parsePct(draft[c.id] ?? "0");
               return (
-                <div key={c.id} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
+                <div key={c.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-slate-900 font-medium truncate">{c.name}</div>
-                      <div className="mt-1 text-xs text-slate-600 flex items-center gap-2">
+                      <div className="text-slate-100 font-medium truncate">{c.name}</div>
+                      <div className="mt-1 text-xs text-slate-400 flex items-center gap-2">
                         <span>Atual</span>
                         <Badge variant="info">{Number(c.target_percent ?? 0).toFixed(1)}%</Badge>
                       </div>
@@ -142,7 +142,7 @@ export default function TargetsPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="h-9 w-9 rounded-full border border-slate-200/70 bg-white text-slate-900 hover:bg-slate-50"
+                        className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
                         onClick={() => setPct(c.id, pct - 5)}
                         aria-label="Diminuir 5%"
                         title="-5%"
@@ -151,13 +151,13 @@ export default function TargetsPage() {
                       </button>
 
                       <div className="flex flex-col items-center justify-center px-2">
-                        <div className="text-[11px] text-slate-600">Alvo %</div>
+                        <div className="text-[11px] text-slate-400">Alvo %</div>
                         <Badge variant="info">{pct.toFixed(1)}%</Badge>
                       </div>
 
                       <button
                         type="button"
-                        className="h-9 w-9 rounded-full border border-slate-200/70 bg-white text-slate-900 hover:bg-slate-50"
+                        className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
                         onClick={() => setPct(c.id, pct + 5)}
                         aria-label="Aumentar 5%"
                         title="+5%"
@@ -188,9 +188,9 @@ export default function TargetsPage() {
             })}
           </div>
         ) : (
-          <div className="rounded-xl2 border border-slate-200/70 bg-white p-6 text-center">
-            <div className="text-slate-900 font-medium">Sem classes</div>
-            <div className="mt-1 text-sm text-slate-600">Crie classes para configurar alvos.</div>
+          <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
+            <div className="text-slate-100 font-medium">Sem classes</div>
+            <div className="mt-1 text-sm text-slate-400">Crie classes para configurar alvos.</div>
           </div>
         )}
       </Card>

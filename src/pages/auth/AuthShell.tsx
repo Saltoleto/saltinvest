@@ -17,8 +17,8 @@ export default function AuthShell({
           <div className="mx-auto h-12 w-12 rounded-xl2 bg-gradient-to-br from-emerald-500/90 to-sky-400/90 flex items-center justify-center text-slate-950 font-black shadow-soft">
             SI
           </div>
-          <div className="mt-3 text-xl font-semibold text-slate-900">{title}</div>
-          <div className="mt-1 text-sm text-slate-600">{subtitle}</div>
+          <div className="mt-3 text-xl font-semibold text-slate-100">{title}</div>
+          <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
         </div>
 
         <Card className="p-5 sm:p-6">{children}</Card>

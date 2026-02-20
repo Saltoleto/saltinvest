@@ -13,9 +13,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="max-w-lg w-full rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-6">
-          <div className="text-slate-900 font-semibold">Configuração do Supabase necessária</div>
+          <div className="text-slate-100 font-semibold">Configuração do Supabase necessária</div>
           <div className="mt-2 text-sm text-amber-100">{configError}</div>
-          <div className="mt-4 text-sm text-slate-700">
+          <div className="mt-4 text-sm text-slate-300">
             Depois de configurar o .env.local, reinicie o dev server.
           </div>
         </div>

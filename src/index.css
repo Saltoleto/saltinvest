@@ -3,22 +3,7 @@
 @tailwind utilities;
 
 :root {
-  /*
-    Modernize-inspired premium light theme
-    - Clean neutral canvas
-    - Strong contrast for icons/text
-    - Subtle, professional depth (no heavy transparency)
-  */
-  color-scheme: light;
-
-  /* Design tokens (used by a few global overrides) */
-  --app-bg: #f6f7fb;
-  --app-bg-2: #eef2f7;
-  --text-strong: #0b1220;
-  --text-muted: #5b667a;
-  --card: #ffffff;
-  --border: rgba(15, 23, 42, 0.10);
-  --brand: #5d87ff; /* Modernize-like blue */
+  color-scheme: dark;
 }
 
 html, body {
@@ -26,12 +11,11 @@ html, body {
 }
 
 body {
-  /* Clean canvas like Modernize (keep gradients extremely subtle) */
   background:
-    radial-gradient(900px 520px at 14% 6%, rgba(93,135,255,.10), transparent 65%),
-    radial-gradient(900px 520px at 86% 0%, rgba(16,185,129,.07), transparent 65%),
-    linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-2) 100%);
-  color: var(--text-strong);
+    radial-gradient(900px 500px at 20% 10%, rgba(34,197,94,.12), transparent 60%),
+    radial-gradient(850px 520px at 80% 0%, rgba(96,165,250,.12), transparent 60%),
+    radial-gradient(650px 450px at 50% 100%, rgba(167,139,250,.10), transparent 60%),
+    #0B1220;
 }
 
 @keyframes shimmer {
@@ -45,11 +29,8 @@ body {
 }
 
 ::selection {
-  background: rgba(93,135,255,.18);
+  background: rgba(56,189,248,.25);
 }
-
-/* Ensure SVG icons look crisp on light surfaces */
-svg { shape-rendering: geometricPrecision; }
 
 /*
   Native <select> dropdown options on Windows/Chrome often ignore dark styling.
