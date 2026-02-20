@@ -72,8 +72,8 @@ export default function ClassesPage() {
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Organize sua carteira por tipo de ativo.</div>
+          <div className="text-slate-900 font-semibold">Ações</div>
+          <div className="text-sm text-slate-600">Organize sua carteira por tipo de ativo.</div>
         </div>
         <Button
           onClick={openNew}
@@ -90,7 +90,7 @@ export default function ClassesPage() {
         {classes.loading ? (
           <div className="grid gap-2">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+              <div key={i} className="rounded-xl2 border border-slate-200/70 bg-white p-4 flex items-center justify-between gap-3">
                 <Skeleton className="h-4 w-40" />
                 <div className="flex gap-2">
                   <Skeleton className="h-9 w-20" />
@@ -102,15 +102,15 @@ export default function ClassesPage() {
         ) : rows.length ? (
           <div className="grid gap-2">
             {rows.map((c) => (
-              <div key={c.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+              <div key={c.id} className="rounded-xl2 border border-slate-200/70 bg-white p-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-slate-100 font-medium">{c.name}</div>
+                  <div className="text-slate-900 font-medium">{c.name}</div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openEdit(c)} className="h-9 px-3">
                     Editar
                   </Button>
-                  <Button variant="ghost" onClick={() => void onDelete(c.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
+                  <Button variant="ghost" onClick={() => void onDelete(c.id)} className="h-9 px-3 text-red-600 hover:bg-red-400/10">
                     Excluir
                   </Button>
                 </div>
@@ -118,9 +118,9 @@ export default function ClassesPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-            <div className="text-slate-100 font-medium">Nenhuma classe ainda</div>
-            <div className="mt-1 text-sm text-slate-400">Crie classes para melhorar análises e alvos.</div>
+          <div className="rounded-xl2 border border-slate-200/70 bg-white p-6 text-center">
+            <div className="text-slate-900 font-medium">Nenhuma classe ainda</div>
+            <div className="mt-1 text-sm text-slate-600">Crie classes para melhorar análises e alvos.</div>
           </div>
         )}
       </Card>

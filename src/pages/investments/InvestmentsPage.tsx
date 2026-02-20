@@ -73,8 +73,8 @@ export default function InvestmentsPage() {
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Registre ativos e distribua aportes em metas.</div>
+          <div className="text-slate-900 font-semibold">Ações</div>
+          <div className="text-sm text-slate-600">Registre ativos e distribua aportes em metas.</div>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
           <Select
@@ -98,11 +98,11 @@ export default function InvestmentsPage() {
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
-          <div className="text-sm text-slate-400">
+          <div className="text-sm text-slate-600">
             {rows.length} item(ns){showRedeemed ? " (inclui resgatados)" : ""}
           </div>
           <button
-            className="text-sm text-sky-300 hover:text-sky-200"
+            className="text-sm text-sky-300 hover:text-sky-700"
             onClick={() => setShowRedeemed((v) => !v)}
           >
             {showRedeemed ? "Ocultar resgatados" : "Mostrar resgatados"}
@@ -113,7 +113,7 @@ export default function InvestmentsPage() {
           {invs.loading ? (
             <>
               {Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div key={i} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <Skeleton className="h-4 w-40" />
@@ -139,24 +139,24 @@ export default function InvestmentsPage() {
               const over = allocated > total + 0.0001;
 
               return (
-                <div key={r.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div key={r.id} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-slate-100 font-medium flex items-center gap-2">
+                      <div className="text-slate-900 font-medium flex items-center gap-2">
                         {r.name}
                         {r.is_redeemed ? <Badge variant="neutral">Resgatado</Badge> : null}
                         {r.is_fgc_covered ? <Badge variant="success">FGC</Badge> : <Badge variant="neutral">Sem FGC</Badge>}
                         {r.liquidity_type === "diaria" ? <Badge variant="info">Diária</Badge> : <Badge variant="warning">Vencimento</Badge>}
                       </div>
-                      <div className="mt-1 text-sm text-slate-400">
+                      <div className="mt-1 text-sm text-slate-600">
                         {r.institution_name ?? "Sem instituição"} • {r.class_name ?? "—"}
                         {r.liquidity_type === "vencimento" ? ` • venc: ${formatDateBR(r.due_date)}` : ""}
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-slate-100 font-semibold">{formatBRL(total)}</div>
-                      <div className={"mt-1 text-xs " + (over ? "text-red-300" : "text-slate-400")}>
+                      <div className="text-slate-900 font-semibold">{formatBRL(total)}</div>
+                      <div className={"mt-1 text-xs " + (over ? "text-red-300" : "text-slate-600")}>
                         Alocado: {formatBRL(allocated)}{over ? " (acima do total!)" : ""}
                       </div>
                     </div>
@@ -177,13 +177,13 @@ export default function InvestmentsPage() {
                       <Button
                         variant="ghost"
                         onClick={() => void redeem(r.id)}
-                        className="h-9 px-3 text-amber-200 hover:bg-amber-400/10"
+                        className="h-9 px-3 text-amber-700 hover:bg-amber-400/10"
                       >
                         Resgatar
                       </Button>
                     ) : null}
 
-                    <Button variant="ghost" onClick={() => void onDelete(r.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
+                    <Button variant="ghost" onClick={() => void onDelete(r.id)} className="h-9 px-3 text-red-600 hover:bg-red-400/10">
                       Excluir
                     </Button>
                   </div>
@@ -191,11 +191,11 @@ export default function InvestmentsPage() {
               );
             })
           ) : (
-            <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-              <div className="text-slate-100 font-medium">Nenhum investimento ainda</div>
-              <div className="mt-1 text-sm text-slate-400">Cadastre investimentos e conecte metas para ver progresso.</div>
-              <div className="mt-3 text-sm text-slate-400">
-                Use o botão <span className="text-slate-200 font-medium">+</span> acima para cadastrar.
+            <div className="rounded-xl2 border border-slate-200/70 bg-white p-6 text-center">
+              <div className="text-slate-900 font-medium">Nenhum investimento ainda</div>
+              <div className="mt-1 text-sm text-slate-600">Cadastre investimentos e conecte metas para ver progresso.</div>
+              <div className="mt-3 text-sm text-slate-600">
+                Use o botão <span className="text-slate-800 font-medium">+</span> acima para cadastrar.
               </div>
             </div>
           )}

@@ -60,20 +60,20 @@ export default function MonthlyPlanPage() {
       <Card className="p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div>
-            <div className="text-slate-100 font-semibold">Total sugerido</div>
+            <div className="text-slate-900 font-semibold">Total sugerido</div>
             {summary.loading ? (
               <Skeleton className="mt-2 h-10 w-44" />
             ) : (
               <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
             )}
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
-                <div className="text-xs text-slate-400">Aportado no mês</div>
-                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.contributed)}</div>}
+              <div className="rounded-xl2 border border-slate-200/70 bg-white p-3">
+                <div className="text-xs text-slate-600">Aportado no mês</div>
+                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-900 font-semibold">{formatBRL(totals.contributed)}</div>}
               </div>
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-3">
-                <div className="text-xs text-slate-400">Restante do mês</div>
-                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-100 font-semibold">{formatBRL(totals.remaining)}</div>}
+              <div className="rounded-xl2 border border-slate-200/70 bg-white p-3">
+                <div className="text-xs text-slate-600">Restante do mês</div>
+                {summary.loading ? <Skeleton className="mt-2 h-5 w-24" /> : <div className="mt-1 text-slate-900 font-semibold">{formatBRL(totals.remaining)}</div>}
               </div>
             </div>
           </div>
@@ -91,7 +91,7 @@ export default function MonthlyPlanPage() {
 
       <Card className="p-4">
         <div className="flex items-center justify-between">
-          <div className="text-slate-100 font-semibold">Metas no plano</div>
+          <div className="text-slate-900 font-semibold">Metas no plano</div>
           <Badge variant="info">{goals.data?.length ?? 0}</Badge>
         </div>
 
@@ -99,7 +99,7 @@ export default function MonthlyPlanPage() {
           {goals.loading ? (
             <>
               {Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div key={i} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <Skeleton className="h-4 w-28" />
@@ -130,12 +130,12 @@ export default function MonthlyPlanPage() {
               const contributed = Number(g.current_contributed) || 0;
               const percent = g.target_value > 0 ? (contributed / Number(g.target_value)) * 100 : 0;
               return (
-                <div key={g.goal_id} className={"rounded-xl2 border border-white/10 bg-white/5 p-4 " + cardEmphasisClass(status.variant)}>
+                <div key={g.goal_id} className={"rounded-xl2 border border-slate-200/70 bg-white p-4 " + cardEmphasisClass(status.variant)}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                     <div>
-                      <div className="text-slate-100 font-medium">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-400">
-                        Sugestão: <span className="text-slate-100 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
+                      <div className="text-slate-900 font-medium">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        Sugestão: <span className="text-slate-900 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
                       </div>
                     </div>
                     <Badge variant={status.variant} title={status.label} aria-label={status.label}>
@@ -151,7 +151,7 @@ export default function MonthlyPlanPage() {
                   </div>
 
                   <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                    <div className="flex items-center justify-between text-xs text-slate-600">
                       <span>Mês</span>
                       <span>
                         {formatBRL(row.contributed_this_month)} / {formatBRL(row.suggested_this_month)}
@@ -159,7 +159,7 @@ export default function MonthlyPlanPage() {
                     </div>
                     <Progress className="mt-2" value={clamp(monthlyProgress, 0, 100)} />
 
-                    <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+                    <div className="mt-3 flex items-center justify-between text-xs text-slate-600">
                       <span>Total</span>
                       <span>{formatPercent(Number(percent) || 0)}</span>
                     </div>
@@ -169,9 +169,9 @@ export default function MonthlyPlanPage() {
               );
             })
           ) : (
-            <div className="rounded-xl2 border border-white/10 bg-white/5 p-5 text-center">
-              <div className="text-slate-100 font-medium">Nenhuma meta no plano do mês</div>
-              <div className="mt-1 text-sm text-slate-400">Ative a flag “Plano do mês” em uma meta para ela entrar no cálculo.</div>
+            <div className="rounded-xl2 border border-slate-200/70 bg-white p-5 text-center">
+              <div className="text-slate-900 font-medium">Nenhuma meta no plano do mês</div>
+              <div className="mt-1 text-sm text-slate-600">Ative a flag “Plano do mês” em uma meta para ela entrar no cálculo.</div>
             </div>
           )}
         </div>

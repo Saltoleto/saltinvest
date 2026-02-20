@@ -117,8 +117,8 @@ export default function GoalsPage() {
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Defina objetivos e acompanhe evolução com alocações.</div>
+          <div className="text-slate-900 font-semibold">Ações</div>
+          <div className="text-sm text-slate-600">Defina objetivos e acompanhe evolução com alocações.</div>
           <div className="mt-1 text-xs text-slate-500">Pelo modelo de dados, metas não são editáveis (apenas criar e excluir).</div>
         </div>
         <Button
@@ -136,7 +136,7 @@ export default function GoalsPage() {
         {goals.loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+              <div key={i} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <Skeleton className="h-4 w-36" />
@@ -155,18 +155,18 @@ export default function GoalsPage() {
               const ev = byId.get(g.id);
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
-                <div key={g.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div key={g.id} className="rounded-xl2 border border-slate-200/70 bg-white p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-slate-100 font-medium">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-400">
+                      <div className="text-slate-900 font-medium">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-600">
                         {formatBRL(Number(ev?.current_contributed ?? 0))} de {formatBRL(Number(g.target_value ?? 0))} • alvo {formatDateBR(g.target_date)}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>{g.is_monthly_plan ? "No plano" : "Fora do plano"}</Badge>
-                      <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
+                      <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-600 hover:bg-red-400/10">
                         Excluir
                       </Button>
                     </div>
@@ -174,16 +174,16 @@ export default function GoalsPage() {
 
                   <div className="mt-3">
                     <Progress value={pct} />
-                    <div className="mt-2 text-xs text-slate-400">{pct.toFixed(1)}%</div>
+                    <div className="mt-2 text-xs text-slate-600">{pct.toFixed(1)}%</div>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-            <div className="text-slate-100 font-medium">Nenhuma meta ainda</div>
-            <div className="mt-1 text-sm text-slate-400">Crie sua primeira meta para ver o plano mensal.</div>
+          <div className="rounded-xl2 border border-slate-200/70 bg-white p-6 text-center">
+            <div className="text-slate-900 font-medium">Nenhuma meta ainda</div>
+            <div className="mt-1 text-sm text-slate-600">Crie sua primeira meta para ver o plano mensal.</div>
           </div>
         )}
       </Card>
