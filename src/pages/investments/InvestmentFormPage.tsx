@@ -365,11 +365,11 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                             <button
                               type="button"
                               onClick={() => applySuggested(g.goal_id)}
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-200/70 bg-white px-2.5 py-1 text-slate-900 hover:bg-slate-50 active:bg-slate-50"
+                              className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-indigo-700 hover:bg-indigo-100 active:bg-indigo-100"
                               title="Preencher com o valor sugerido do mês"
                             >
                               {formatBRL(g.suggested)}
-                              <span className="text-slate-700/80">• aplicar</span>
+                              <span className="text-indigo-700/80">• aplicar</span>
                             </button>
                           </div>
                         ) : null}
@@ -377,7 +377,7 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                       <div className="w-32">
                         <Input
                           label="Aporte (R$)"
-                          placeholder={g.is_monthly_plan && g.suggested > 0 ? formatBRL(g.suggested) : "R$ 0,00"}
+                          placeholder="R$ 0,00"
                           inputMode="numeric"
                           value={alloc[g.goal_id] ?? ""}
                           onChange={(e) => setAllocation(g.goal_id, maskBRLCurrencyInput(e.target.value))}

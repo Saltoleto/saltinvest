@@ -165,8 +165,19 @@ export default function GoalsPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>{g.is_monthly_plan ? "No plano" : "Fora do plano"}</Badge>
-                      <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-600 hover:bg-red-400/10">
+                      {g.is_monthly_plan ? (
+                        <Badge variant="info" title="No plano" className="px-2">
+                          <span className="sr-only">No plano</span>
+                          <Icon name="check" className="h-4 w-4" />
+                        </Badge>
+                      ) : (
+                        <Badge variant="neutral">Fora do plano</Badge>
+                      )}
+                      <Button
+                        variant="ghost"
+                        onClick={() => void onDelete(g.id)}
+                        className="h-9 px-3 whitespace-nowrap text-red-600 hover:bg-red-400/10"
+                      >
                         Excluir
                       </Button>
                     </div>

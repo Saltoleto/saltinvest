@@ -64,7 +64,7 @@ export default function MonthlyPlanPage() {
             {summary.loading ? (
               <Skeleton className="mt-2 h-10 w-44" />
             ) : (
-              <div className="mt-1 text-3xl font-semibold">{formatBRL(totals.suggested)}</div>
+              <div className="mt-1 text-3xl font-semibold text-slate-900">{formatBRL(totals.suggested)}</div>
             )}
             <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-xl2 border border-slate-200/70 bg-white p-3">
