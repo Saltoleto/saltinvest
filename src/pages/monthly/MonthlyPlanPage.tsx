@@ -46,6 +46,31 @@ export default function MonthlyPlanPage() {
   const summary = useAsync(() => getMonthlyPlanSummary(month), [month]);
   const goals = useAsync(() => listMonthlyPlanGoals(month), [month]);
 
+  const sortedGoals = React.useMemo(() => {
+    const src = (goals.data ?? []).slice();
+    // Higher urgency first: explicit priority_rank, then fewer months remaining, then higher remaining_this_month/remaining_value.
+    src.sort((a: any, b: any) => {
+      const pa = a?.priority_rank == null ? 9999 : Number(a.priority_rank);
+      const pb = b?.priority_rank == null ? 9999 : Number(b.priority_rank);
+      if (pa !== pb) return pa - pb;
+
+      const ma = Number(a?.months_remaining ?? 0);
+      const mb = Number(b?.months_remaining ?? 0);
+      if (ma !== mb) return ma - mb;
+
+      const rma = Number(a?.remaining_this_month ?? 0);
+      const rmb = Number(b?.remaining_this_month ?? 0);
+      if (rma !== rmb) return rmb - rma;
+
+      const ra = Number(a?.remaining_value ?? 0);
+      const rb = Number(b?.remaining_value ?? 0);
+      if (ra !== rb) return rb - ra;
+
+      return String(a?.name ?? "").localeCompare(String(b?.name ?? ""));
+    });
+    return src;
+  }, [goals.data]);
+
   const totals = React.useMemo(() => {
     const s = summary.data;
     return {
@@ -92,7 +117,7 @@ export default function MonthlyPlanPage() {
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="text-slate-100 font-semibold">Metas no plano</div>
-          <Badge variant="info">{goals.data?.length ?? 0}</Badge>
+          <Badge variant="info">{sortedGoals.length ?? 0}</Badge>
         </div>
 
         <div className="mt-4 grid gap-3">
@@ -112,8 +137,8 @@ export default function MonthlyPlanPage() {
                 </div>
               ))}
             </>
-          ) : (goals.data?.length ?? 0) ? (
-            (goals.data ?? []).map((g: any) => {
+          ) : (sortedGoals.length ?? 0) ? (
+            (sortedGoals ?? []).map((g: any) => {
               const row: GoalRow = {
                 goal_id: g.goal_id,
                 name: g.name,

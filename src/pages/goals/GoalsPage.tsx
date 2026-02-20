@@ -113,6 +113,59 @@ export default function GoalsPage() {
 
   const rows = goals.data ?? [];
 
+  const [filtersCollapsed, setFiltersCollapsed] = React.useState(true);
+  const [q, setQ] = React.useState("");
+  const [planFilter, setPlanFilter] = React.useState<"all" | "in" | "out">("all");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "done" | "overdue">("all");
+  const [dateFrom, setDateFrom] = React.useState<string>("");
+  const [dateTo, setDateTo] = React.useState<string>("");
+
+  function derivedStatus(ev: any, goal: any): "done" | "overdue" | "active" {
+    const pct = Number(ev?.percent_progress ?? 0);
+    if (pct >= 100) return "done";
+    const days = Number(ev?.days_remaining);
+    if (!Number.isNaN(days) && days < 0) return "overdue";
+    // fallback: compare target_date to today
+    const td = goal?.target_date ? new Date(goal.target_date).getTime() : NaN;
+    if (!Number.isNaN(td)) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      if (td < today) return "overdue";
+    }
+    return "active";
+  }
+
+  const filtered = React.useMemo(() => {
+    const query = q.trim().toLowerCase();
+    const from = dateFrom ? new Date(dateFrom).getTime() : null;
+    const to = dateTo ? new Date(dateTo).getTime() : null;
+    return rows
+      .filter((g) => {
+        if (planFilter === "in" && !g.is_monthly_plan) return false;
+        if (planFilter === "out" && g.is_monthly_plan) return false;
+
+        const ev = byId.get(g.id);
+        const st = derivedStatus(ev, g);
+        if (statusFilter === "done" && st !== "done") return false;
+        if (statusFilter === "overdue" && st !== "overdue") return false;
+        if (statusFilter === "active" && st !== "active") return false;
+
+        if (query) {
+          if (!String(g.name ?? "").toLowerCase().includes(query)) return false;
+        }
+
+        if (from || to) {
+          const td = g.target_date ? new Date(g.target_date).getTime() : null;
+          if (td == null) return false;
+          if (from != null && td < from) return false;
+          if (to != null && td > to) return false;
+        }
+
+        return true;
+      })
+      .slice();
+  }, [rows, q, planFilter, statusFilter, dateFrom, dateTo, byId]);
+
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex items-center justify-between gap-3">
@@ -133,6 +186,59 @@ export default function GoalsPage() {
       </Card>
 
       <Card className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-slate-100 font-semibold">Filtros</div>
+            <div className="text-sm text-slate-400">{filtered.length} meta(s)</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersCollapsed((v) => !v)}
+            className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+            aria-label={filtersCollapsed ? "Expandir" : "Recolher"}
+          >
+            {filtersCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
+          </button>
+        </div>
+
+        {filtersCollapsed ? null : (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Input label="Nome" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
+
+            <div>
+              <label className="block text-xs text-slate-400">Status</label>
+              <select
+                className="mt-1 w-full rounded-xl2 border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+              >
+                <option value="all">Todos</option>
+                <option value="active">Em andamento</option>
+                <option value="overdue">Vencida</option>
+                <option value="done">Concluída</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-slate-400">Plano do mês</label>
+              <select
+                className="mt-1 w-full rounded-xl2 border border-white/10 bg-white/5 px-3 py-2 text-slate-100 outline-none focus:ring-2 focus:ring-sky-400/30"
+                value={planFilter}
+                onChange={(e) => setPlanFilter(e.target.value as any)}
+              >
+                <option value="all">Todas</option>
+                <option value="in">No plano</option>
+                <option value="out">Fora do plano</option>
+              </select>
+            </div>
+
+            <Input label="Data alvo (de)" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+            <Input label="Data alvo (até)" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-4">
         {goals.loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 2 }).map((_, i) => (
@@ -149,9 +255,9 @@ export default function GoalsPage() {
               </div>
             ))}
           </div>
-        ) : rows.length ? (
+        ) : filtered.length ? (
           <div className="grid gap-3">
-            {rows.map((g) => {
+            {filtered.map((g) => {
               const ev = byId.get(g.id);
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
@@ -165,7 +271,16 @@ export default function GoalsPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>{g.is_monthly_plan ? "No plano" : "Fora do plano"}</Badge>
+                      <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>
+                        {g.is_monthly_plan ? (
+                          <span className="inline-flex items-center" title="No plano do mês" aria-label="No plano do mês">
+                            <Icon name="spark" className="h-4 w-4" />
+                            <span className="sr-only">No plano do mês</span>
+                          </span>
+                        ) : (
+                          "Fora do plano"
+                        )}
+                      </Badge>
                       <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
                         Excluir
                       </Button>

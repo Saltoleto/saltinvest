@@ -5,7 +5,23 @@ export function Icon({
   name,
   className
 }: {
-  name: "grid" | "wallet" | "target" | "pie" | "layers" | "bank" | "gear" | "spark" | "logout" | "plus" | "check" | "x" | "chevronUp" | "chevronDown";
+  name:
+    | "grid"
+    | "wallet"
+    | "target"
+    | "pie"
+    | "layers"
+    | "bank"
+    | "gear"
+    | "spark"
+    | "logout"
+    | "plus"
+    | "check"
+    | "x"
+    | "chevronUp"
+    | "chevronDown"
+    | "droplet"
+    | "shield";
   className?: string;
 }) {
   const common = cn("inline-block", className);
@@ -23,6 +39,19 @@ export function Icon({
           <path d="M3 7a3 3 0 0 1 3-3h12a2 2 0 0 1 2 2v2" />
           <path d="M3 7v10a3 3 0 0 0 3 3h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H8" />
           <path d="M17 13h.01" />
+        </svg>
+      );
+    case "droplet":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2s7 7.4 7 12.2A7 7 0 0 1 5 14.2C5 9.4 12 2 12 2z" />
+        </svg>
+      );
+    case "shield":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2 20 6v6c0 5-3.4 9.4-8 10-4.6-.6-8-5-8-10V6l8-4z" />
+          <path d="M9 12l2 2 4-4" />
         </svg>
       );
     case "target":

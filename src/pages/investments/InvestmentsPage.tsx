@@ -7,6 +7,7 @@ import Badge from "@/ui/primitives/Badge";
 import Modal from "@/ui/primitives/Modal";
 import Select from "@/ui/primitives/Select";
 import Skeleton from "@/ui/primitives/Skeleton";
+import { Icon } from "@/ui/layout/icons";
 import { useAsync } from "@/state/useAsync";
 import { deleteInvestment, listInvestments, setInvestmentRedeemed } from "@/services/investments";
 import { listGoals } from "@/services/goals";
@@ -21,6 +22,8 @@ export default function InvestmentsPage() {
   const goals = useAsync(() => listGoals(), []);
   const [goalId, setGoalId] = React.useState<string>("");
   const invs = useAsync(() => listInvestments({ goal_id: goalId || null }), [goalId]);
+
+  const [filtersCollapsed, setFiltersCollapsed] = React.useState(true);
 
   const modal = searchParams.get("modal");
   const editId = searchParams.get("edit");
@@ -71,29 +74,44 @@ export default function InvestmentsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Registre ativos e distribua aportes em metas.</div>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
-          <Select
-            label="Meta"
-            value={goalId}
-            onChange={(e) => setGoalId(e.target.value)}
-            className="sm:min-w-[260px]"
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-slate-100 font-semibold">Filtros</div>
+            <div className="text-sm text-slate-400">
+              {goalId ? "1" : "0"} filtro(s) ativo(s){q.trim() ? " + busca" : ""}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersCollapsed((v) => !v)}
+            className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+            aria-label={filtersCollapsed ? "Expandir" : "Recolher"}
           >
-            <option value="">Todas</option>
-            {goals.loading
-              ? null
-              : (goals.data ?? []).map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
-                  </option>
-                ))}
-          </Select>
-          <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
+            {filtersCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
+          </button>
         </div>
+
+        {filtersCollapsed ? null : (
+          <div className="mt-4 flex flex-col sm:flex-row gap-2 sm:items-end">
+            <Select
+              label="Meta"
+              value={goalId}
+              onChange={(e) => setGoalId(e.target.value)}
+              className="sm:min-w-[260px]"
+            >
+              <option value="">Todas</option>
+              {goals.loading
+                ? null
+                : (goals.data ?? []).map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+            </Select>
+            <Input label="Buscar" placeholder="nome, classe, instituição" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+        )}
       </Card>
 
       <Card className="p-4">

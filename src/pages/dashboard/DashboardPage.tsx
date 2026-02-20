@@ -30,6 +30,7 @@ function ConcentrationCard({
   labelA?: string;
   labelB?: string;
 }) {
+  const [collapsed, setCollapsed] = React.useState(false);
   const total = items.reduce((s, i) => s + (Number(i.value) || 0), 0);
   const top = items.slice(0, 2);
   const a = top[0];
@@ -40,9 +41,19 @@ function ConcentrationCard({
 
   return (
     <Card className="p-4">
-      <div className="text-slate-100 font-semibold">{title}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-slate-100 font-semibold">{title}</div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/8 transition"
+          aria-label={collapsed ? "Expandir" : "Recolher"}
+        >
+          {collapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
+        </button>
+      </div>
 
-      {total ? (
+      {collapsed ? null : total ? (
         <>
           <div className="mt-3 grid gap-2">
             {a ? (
@@ -87,9 +98,27 @@ function ConcentrationCard({
 
 function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
   return (
-    <Card className="p-4">
-      <div className="text-xs text-slate-400">{title}</div>
-      <div className="mt-1 text-2xl font-semibold text-slate-100">{value}</div>
+    <Card className="p-4 relative overflow-hidden">
+      {/* subtle top accent for premium hierarchy */}
+      <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-sky-400/40 via-emerald-400/30 to-violet-400/30" />
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs text-slate-400">{title}</div>
+          <div className="mt-1 text-2xl font-semibold text-slate-100 tracking-tight">{value}</div>
+        </div>
+        <div className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2">
+          {/* icon is inferred from title (keeps callsites unchanged) */}
+          {title === "Patrimônio" ? (
+            <Icon name="wallet" className="h-5 w-5 text-sky-200" />
+          ) : title === "Liquidez diária" ? (
+            <Icon name="droplet" className="h-5 w-5 text-emerald-200" />
+          ) : (
+            <Icon name="shield" className="h-5 w-5 text-violet-200" />
+          )}
+        </div>
+      </div>
+
       <div className="mt-2 text-sm text-slate-400">{subtitle}</div>
     </Card>
   );
