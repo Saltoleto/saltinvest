@@ -358,8 +358,8 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
               <div className="mt-4 grid gap-3">
                 {(allocations.length ? allocations : []).map((g) => (
                   <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                      <div className="min-w-0 flex-1">
                         <div className="text-slate-100 font-medium flex items-center gap-2">
                           {g.name}
                           {g.is_monthly_plan ? <Badge variant="info">Plano</Badge> : <Badge variant="neutral">—</Badge>}
@@ -382,7 +382,7 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                           </div>
                         ) : null}
                       </div>
-                      <div className="w-32">
+                      <div className="w-full sm:w-32">
                         <Input
                           label="Aporte (R$)"
                           placeholder={g.is_monthly_plan && g.suggested > 0 ? formatBRL(g.suggested) : "R$ 0,00"}

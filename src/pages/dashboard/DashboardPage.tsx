@@ -2,7 +2,6 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Button from "@/ui/primitives/Button";
-import Badge from "@/ui/primitives/Badge";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
@@ -288,29 +287,7 @@ function YearGoalsProjectionCard({
           aria-label={collapsed ? "Expandir evolução anual" : "Recolher evolução anual"}
         >
           <div className="text-slate-100 font-semibold">Evolução anual das metas</div>
-          {/* Mobile-first summary: menos texto, mais hierarquia */}
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:hidden">
-            <div className="min-w-0">
-              <div className="text-[11px] text-slate-400">Realizado em {year}</div>
-              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.ytd)}</div>
-            </div>
-            <div className="min-w-0 text-right">
-              <div className="text-[11px] text-slate-400">Falta até Dez</div>
-              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.projAdd)}</div>
-            </div>
-          </div>
-          <div className="mt-1 text-sm text-slate-400 hidden sm:block">
-            {loading
-              ? "Calculando..."
-              : `Em ${year}: ${formatBRL(totals.ytd)} realizado • Falta: ${formatBRL(totals.projAdd)} até Dez (${formatBRL(
-                  totals.projected
-                )} no total do plano)`}
-          </div>
-          {!loading && totals.projAdd > 0 ? (
-            <div className="mt-2 sm:hidden">
-              <Badge variant="success">{formatBRL(totals.projAdd)} faltam se mantiver o plano</Badge>
-            </div>
-          ) : null}
+          {/* Mantemos o header limpo. Os destaques (Realizado / Falta até Dez) ficam dentro do card "Avanço no ano". */}
         </button>
 
         <div className="shrink-0 flex items-center gap-2">
@@ -339,7 +316,7 @@ function YearGoalsProjectionCard({
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm text-slate-400">Avanço no ano</div>
-                  <Badge variant="info">Base: Parcelas do objetivo</Badge>
+                  {/* removido: texto técnico/ruído visual */}
                 </div>
                 <div className="mt-3 h-3 rounded-full bg-white/10 overflow-hidden flex">
                   {/* já realizado */}
@@ -347,14 +324,18 @@ function YearGoalsProjectionCard({
                   {/* projeção */}
                   <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, 100 - Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100))}%` }} />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+
+                {/* Destaques (Realizado / Falta até Dez) */}
+                <div className="mt-3 flex flex-wrap items-center gap-3">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
                     <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                    Realizado: <span className="font-semibold">{formatBRL(totals.ytd)}</span>
+                    <span className="text-slate-300">Realizado:</span>
+                    <span className="font-semibold">{formatBRL(totals.ytd)}</span>
                   </span>
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
                     <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                    Falta até Dez: <span className="font-semibold">{formatBRL(totals.projAdd)}</span>
+                    <span className="text-slate-300">Falta até Dez:</span>
+                    <span className="font-semibold">{formatBRL(totals.projAdd)}</span>
                   </span>
                 </div>
               </div>
