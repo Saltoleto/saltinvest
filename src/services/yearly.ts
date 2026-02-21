@@ -5,34 +5,38 @@ import { cacheFetch } from "./cache";
 const TTL_MS = 20_000;
 const k = (uid: string, suffix: string) => `u:${uid}:yearly:${suffix}`;
 
+export type YearTotals = {
+  year: number;
+  ytd: number;
+  projected: number;
+  projAdd: number;
+};
+
 export type YearGoalProjectionRow = {
-  user_id: string;
   goal_id: string;
   name: string;
   target_value: number;
-  is_monthly_plan: boolean;
-  contributed_ytd: number;
-  suggested_remaining_year: number;
-  projected_end_year: number;
-  progress_ytd_pct: number;
-  progress_projected_pct: number;
+  ytd: number;
+  projected: number;
+  proj_add: number;
+  ytd_pct: number;
+  projected_pct: number;
 };
 
 export type YearMonthGoalDetail = {
   goal_id: string;
   name: string;
   target_value: number;
-  is_monthly_plan: boolean;
-  contributed: number;
-  planned: number;
+  contributed: number; // realizado no mês
+  planned: number; // planejado no mês (parcelas abertas)
 };
 
 export type YearMonthBreakdownRow = {
   month: string; // YYYY-MM
-  contributed: number;
-  planned: number;
-  contributed_cum: number;
-  projected_cum: number;
+  contributed: number; // realizado no mês
+  planned: number; // planejado no mês (parcelas abertas)
+  contributed_cum: number; // acumulado até o mês
+  projected_cum: number; // acumulado + planejado restante até Dez
   details: YearMonthGoalDetail[];
 };
 
@@ -40,223 +44,239 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+function yearStart(year: number) {
+  return `${year}-01-01`;
+}
+
+function yearEndExclusive(year: number) {
+  return `${year + 1}-01-01`;
+}
+
 function monthStartISO(d = new Date()): string {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
 }
 
-export async function listYearGoalProjections(year?: number): Promise<YearGoalProjectionRow[]> {
+function decMonthStart(year: number): string {
+  return `${year}-12-01`;
+}
+
+export async function listYearGoalProjections(year?: number): Promise<{ totals: YearTotals; goals: YearGoalProjectionRow[] }> {
   const uid = await requireUserId();
-  const now = new Date();
-  const y = year ?? now.getFullYear();
-  const yearStart = `${y}-01-01T00:00:00.000Z`;
-  const nextYearStart = `${y + 1}-01-01T00:00:00.000Z`;
-  const fromMonth = y === now.getFullYear() ? monthStartISO(now) : `${y}-01-01`.slice(0, 7) + "-01";
-  const toMonth = `${y}-12-01`;
+  const y = year ?? new Date().getFullYear();
+  const cacheKey = k(uid, `proj:${y}`);
 
-  return cacheFetch(k(uid, `goals:${y}`), TTL_MS, async () => {
-    const { data: goals, error: eGoals } = await supabase
-      .from("objetivos")
-      .select("id, nome, valor_alvo, participa_plano_mensal")
-      .eq("usuario_id", uid);
-    if (eGoals) throw eGoals;
+  return cacheFetch(cacheKey, TTL_MS, async () => {
+    const yStart = yearStart(y);
+    const yEnd = yearEndExclusive(y);
 
-    const ids = (goals ?? []).map((g: any) => String(g.id));
-    if (!ids.length) return [];
+    const { data: metas, error: e1 } = await supabase
+      .from("metas")
+      .select("id, nome, valor_alvo")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
+    if (e1) throw e1;
 
-    // Aportes no ano
-    const contributed: Record<string, number> = {};
-    const { data: aportes, error: eA } = await supabase
-      .from("aportes")
-      .select("objetivo_id, valor_aporte, aportado_em")
-      .eq("usuario_id", uid)
-      .in("objetivo_id", ids)
-      .gte("aportado_em", yearStart)
-      .lt("aportado_em", nextYearStart);
-    if (eA) throw eA;
-    for (const a of aportes ?? []) {
-      const gid = String((a as any).objetivo_id);
-      contributed[gid] = (contributed[gid] ?? 0) + (Number((a as any).valor_aporte) || 0);
-    }
-
-    // Projeção: soma do valor_planejado do plano mensal até o fim do ano
-    // (baseado na visão v_plano_mensal_detalhe)
-    const suggestedByGoal: Record<string, number> = {};
-    const { data: planRows, error: eP } = await supabase
-      .from("v_plano_mensal_detalhe")
-      .select("objetivo_id, mes_referencia, valor_planejado, participa_plano_mensal")
-      .eq("usuario_id", uid)
-      .eq("participa_plano_mensal", true)
-      .gte("mes_referencia", fromMonth)
-      .lte("mes_referencia", toMonth)
-      .in("objetivo_id", ids);
-    if (eP) throw eP;
-    for (const r of planRows ?? []) {
-      const gid = String((r as any).objetivo_id);
-      suggestedByGoal[gid] = (suggestedByGoal[gid] ?? 0) + (Number((r as any).valor_planejado) || 0);
-    }
-
-    return (goals ?? []).map((g: any) => {
-      const gid = String(g.id);
-      const target = Number(g.valor_alvo) || 0;
-      const ytd = contributed[gid] ?? 0;
-      const suggested = suggestedByGoal[gid] ?? 0;
-      const projected = ytd + suggested;
-      const pctYtd = target > 0 ? (ytd / target) * 100 : 0;
-      const pctProj = target > 0 ? (projected / target) * 100 : 0;
+    const goalIds = (metas ?? []).map((m: any) => String(m.id));
+    if (!goalIds.length) {
       return {
-        user_id: uid,
-        goal_id: gid,
+        totals: { year: y, ytd: 0, projected: 0, projAdd: 0 },
+        goals: []
+      };
+    }
+
+    // "Agora" (realizado) baseado no plano: soma de parcelas/submetas com status APORTADA (equivalente a ATINGIDA)
+    // Usamos valor_esperado como fonte de verdade do plano (e não valor_aportado), para garantir consistência com o alvo.
+    const { data: subsYear, error: e2 } = await supabase
+      .from("submetas")
+      .select("meta_id, valor_esperado, status, data_referencia")
+      .eq("user_id", uid)
+      .in("meta_id", goalIds)
+      .gte("data_referencia", yStart)
+      .lt("data_referencia", yEnd);
+    if (e2) throw e2;
+
+    const ytdByGoal: Record<string, number> = {};
+    for (const s of subsYear ?? []) {
+      const gid = String((s as any).meta_id);
+      const st = String((s as any).status || "");
+      const achieved = st === "APORTADA" || st === "ATINGIDA";
+      const v = achieved ? (Number((s as any).valor_esperado) || 0) : 0;
+      ytdByGoal[gid] = (ytdByGoal[gid] ?? 0) + v;
+    }
+
+    // "Até Dez" (faltante) = soma de parcelas/submetas ABERTA do mês atual até Dez.
+    const nowMonth = monthStartISO();
+    const dec = decMonthStart(y);
+
+    const { data: subsRemain, error: e3 } = await supabase
+      .from("submetas")
+      .select("meta_id, valor_esperado, status, data_referencia")
+      .eq("user_id", uid)
+      .in("meta_id", goalIds)
+      .eq("status", "ABERTA")
+      .gte("data_referencia", nowMonth)
+      .lte("data_referencia", dec);
+    if (e3) throw e3;
+
+    const rawRemainByGoal: Record<string, number> = {};
+    for (const s of subsRemain ?? []) {
+      const gid = String((s as any).meta_id);
+      rawRemainByGoal[gid] = (rawRemainByGoal[gid] ?? 0) + (Number((s as any).valor_esperado) || 0);
+    }
+
+    const goals: YearGoalProjectionRow[] = (metas ?? []).map((g: any) => {
+      const goalId = String(g.id);
+      const target = Number(g.valor_alvo) || 0;
+      const ytdVal = ytdByGoal[goalId] ?? 0;
+      const remainingToTarget = Math.max(0, target - ytdVal);
+      const projAddRaw = rawRemainByGoal[goalId] ?? 0;
+      const projAdd = Math.min(projAddRaw, remainingToTarget);
+      const projected = ytdVal + projAdd;
+
+      const ytdPct = target > 0 ? Math.min(100, (ytdVal / target) * 100) : 0;
+      const projPct = target > 0 ? Math.min(100, (projected / target) * 100) : 0;
+
+      return {
+        goal_id: goalId,
         name: String(g.nome),
         target_value: target,
-        is_monthly_plan: !!g.participa_plano_mensal,
-        contributed_ytd: ytd,
-        suggested_remaining_year: suggested,
-        projected_end_year: projected,
-        progress_ytd_pct: pctYtd,
-        progress_projected_pct: pctProj
-      } as YearGoalProjectionRow;
+        ytd: ytdVal,
+        projected,
+        proj_add: projAdd,
+        ytd_pct: ytdPct,
+        projected_pct: projPct
+      };
     });
+
+    const totalsYtd = goals.reduce((acc, r) => acc + r.ytd, 0);
+    const totalsProjAdd = goals.reduce((acc, r) => acc + r.proj_add, 0);
+    const totalsProjected = totalsYtd + totalsProjAdd;
+
+    return {
+      totals: { year: y, ytd: totalsYtd, projAdd: totalsProjAdd, projected: totalsProjected },
+      goals
+    };
   });
 }
 
-function ym(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+function monthKey(dateISO: string): string {
+  // data_referencia é YYYY-MM-DD
+  return String(dateISO).slice(0, 7);
 }
 
-function monthsOfYear(y: number): string[] {
-  return Array.from({ length: 12 }).map((_, i) => `${y}-${pad2(i + 1)}`);
+function monthsOfYear(year: number): string[] {
+  return Array.from({ length: 12 }).map((_, i) => `${year}-${pad2(i + 1)}`);
 }
 
 /**
- * Month-by-month breakdown for the "Metas no ano" experience.
- * - contributed: sum of aportes in the month
- * - planned: sum of planned amounts from v_plano_mensal_detalhe in the month (only goals in monthly plan)
- * - projected_cum: cumulative projection from current month onward
+ * Retorna uma linha do tempo mês-a-mês baseada em submetas (parcelas).
+ * - contributed: soma de valor_aportado no mês
+ * - planned: soma de valor_esperado das parcelas ABERTA no mês
+ * - contributed_cum: acumulado de contributed
+ * - projected_cum: contributed_cum + soma do planned (ABERTA) do mês até Dez
  */
 export async function listYearMonthBreakdown(year?: number): Promise<YearMonthBreakdownRow[]> {
   const uid = await requireUserId();
-  const now = new Date();
-  const y = year ?? now.getFullYear();
+  const y = year ?? new Date().getFullYear();
+  const cacheKey = k(uid, `months:${y}`);
 
-  const yearStart = `${y}-01-01T00:00:00.000Z`;
-  const nextYearStart = `${y + 1}-01-01T00:00:00.000Z`;
+  return cacheFetch(cacheKey, TTL_MS, async () => {
+    const yStart = yearStart(y);
+    const yEnd = yearEndExclusive(y);
 
-  return cacheFetch(k(uid, `months:${y}`), TTL_MS, async () => {
-    const { data: goals, error: eGoals } = await supabase
-      .from("objetivos")
-      .select("id, nome, valor_alvo, participa_plano_mensal")
-      .eq("usuario_id", uid);
-    if (eGoals) throw eGoals;
+    const { data: metas, error: e1 } = await supabase
+      .from("metas")
+      .select("id, nome, valor_alvo")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
+    if (e1) throw e1;
 
-    const goalById = new Map<string, { name: string; target: number; plan: boolean }>();
-    for (const g of goals ?? []) {
-      goalById.set(String((g as any).id), {
-        name: String((g as any).nome),
-        target: Number((g as any).valor_alvo) || 0,
-        plan: !!(g as any).participa_plano_mensal
-      });
+    const goalById: Record<string, { id: string; name: string; target: number }> = {};
+    for (const m of metas ?? []) {
+      const id = String((m as any).id);
+      goalById[id] = { id, name: String((m as any).nome), target: Number((m as any).valor_alvo) || 0 };
     }
-    const ids = Array.from(goalById.keys());
-    if (!ids.length) return [];
+    const goalIds = Object.keys(goalById);
+    if (!goalIds.length) return [];
 
-    // Contribuições por mês e meta
-    const contribByYm: Record<string, Record<string, number>> = {};
-    const { data: aportes, error: eA } = await supabase
-      .from("aportes")
-      .select("objetivo_id, valor_aporte, aportado_em")
-      .eq("usuario_id", uid)
-      .in("objetivo_id", ids)
-      .gte("aportado_em", yearStart)
-      .lt("aportado_em", nextYearStart);
-    if (eA) throw eA;
-    for (const a of aportes ?? []) {
-      const gid = String((a as any).objetivo_id);
-      const dt = new Date(String((a as any).aportado_em));
-      const key = ym(dt);
-      contribByYm[key] = contribByYm[key] ?? {};
-      contribByYm[key][gid] = (contribByYm[key][gid] ?? 0) + (Number((a as any).valor_aporte) || 0);
-    }
-
-    // Planejado por mês e meta (somente metas do plano mensal)
-    const plannedByYm: Record<string, Record<string, number>> = {};
-    const { data: planRows, error: eP } = await supabase
-      .from("v_plano_mensal_detalhe")
-      .select("objetivo_id, mes_referencia, valor_planejado, participa_plano_mensal")
-      .eq("usuario_id", uid)
-      .eq("participa_plano_mensal", true)
-      .gte("mes_referencia", `${y}-01-01`)
-      .lte("mes_referencia", `${y}-12-31`)
-      .in("objetivo_id", ids);
-    if (eP) throw eP;
-    for (const r of planRows ?? []) {
-      const gid = String((r as any).objetivo_id);
-      const d = new Date(String((r as any).mes_referencia));
-      const key = ym(d);
-      plannedByYm[key] = plannedByYm[key] ?? {};
-      plannedByYm[key][gid] = (plannedByYm[key][gid] ?? 0) + (Number((r as any).valor_planejado) || 0);
-    }
+    const { data: subs, error: e2 } = await supabase
+      .from("submetas")
+      .select("meta_id, data_referencia, status, valor_aportado, valor_esperado")
+      .eq("user_id", uid)
+      .in("meta_id", goalIds)
+      .gte("data_referencia", yStart)
+      .lt("data_referencia", yEnd);
+    if (e2) throw e2;
 
     const months = monthsOfYear(y);
-    const currentYm = ym(now);
 
-    let cumContrib = 0;
-    let cumProjected = 0;
+    const contributedByMonth: Record<string, number> = {};
+    const plannedByMonth: Record<string, number> = {};
 
-    const out: YearMonthBreakdownRow[] = [];
-    for (const m of months) {
-      const cMap = contribByYm[m] ?? {};
-      const pMap = plannedByYm[m] ?? {};
+    // detailsByMonthGoal[month][goal] = {contributed, planned}
+    const detailsByMonthGoal: Record<string, Record<string, { contributed: number; planned: number }>> = {};
 
-      let contributed = 0;
-      let planned = 0;
+    for (const s of subs ?? []) {
+      const gid = String((s as any).meta_id);
+      const mk = monthKey(String((s as any).data_referencia));
+      if (!months.includes(mk)) continue;
 
-      const details: YearMonthGoalDetail[] = [];
-      for (const gid of ids) {
-        const meta = goalById.get(gid)!;
-        const c = Number(cMap[gid] ?? 0);
-        const p = Number(pMap[gid] ?? 0);
-        if (c !== 0 || p !== 0) {
-          details.push({
-            goal_id: gid,
-            name: meta.name,
-            target_value: meta.target,
-            is_monthly_plan: meta.plan,
-            contributed: c,
-            planned: p
-          });
-        }
-        contributed += c;
-        planned += p;
-      }
+      const st = String((s as any).status || "");
+      const expected = Number((s as any).valor_esperado) || 0;
+      // Contribuído no mês = parcelas atingidas (APORTADA/ATINGIDA) somadas pelo valor esperado.
+      const contributed = st === "APORTADA" || st === "ATINGIDA" ? expected : 0;
+      // Planejado no mês = parcelas ainda abertas.
+      const planned = st === "ABERTA" ? expected : 0;
 
-      cumContrib += contributed;
+      contributedByMonth[mk] = (contributedByMonth[mk] ?? 0) + contributed;
+      plannedByMonth[mk] = (plannedByMonth[mk] ?? 0) + planned;
 
-      // Projection: past months follow actual; from current month onward, add planned for future months
-      const isFuture = m > currentYm;
-      const isCurrent = m === currentYm;
-      if (out.length === 0) {
-        // initialize at Jan
-        cumProjected = cumContrib;
-      } else {
-        if (isFuture) {
-          cumProjected += planned;
-        } else if (isCurrent) {
-          cumProjected = cumContrib; // reset baseline at current month
-        } else {
-          cumProjected = cumContrib;
-        }
-      }
+      detailsByMonthGoal[mk] = detailsByMonthGoal[mk] ?? {};
+      const cell = (detailsByMonthGoal[mk][gid] = detailsByMonthGoal[mk][gid] ?? { contributed: 0, planned: 0 });
+      cell.contributed += contributed;
+      cell.planned += planned;
+    }
 
-      out.push({
-        month: m,
+    // remaining planned from month -> Dec
+    const plannedRemainingFrom: Record<string, number> = {};
+    let runningRemain = 0;
+    for (let i = months.length - 1; i >= 0; i--) {
+      const mk = months[i];
+      runningRemain += plannedByMonth[mk] ?? 0;
+      plannedRemainingFrom[mk] = runningRemain;
+    }
+
+    // cumulative contributed
+    const rows: YearMonthBreakdownRow[] = [];
+    let runningContrib = 0;
+    for (const mk of months) {
+      const contributed = contributedByMonth[mk] ?? 0;
+      const planned = plannedByMonth[mk] ?? 0;
+      runningContrib += contributed;
+
+      const projectedCum = runningContrib + (plannedRemainingFrom[mk] ?? 0);
+
+      const detailsObj = detailsByMonthGoal[mk] ?? {};
+      const details: YearMonthGoalDetail[] = Object.keys(detailsObj)
+        .map((gid) => ({
+          goal_id: gid,
+          name: goalById[gid]?.name ?? "",
+          target_value: goalById[gid]?.target ?? 0,
+          contributed: detailsObj[gid].contributed,
+          planned: detailsObj[gid].planned,
+        }))
+        .sort((a, b) => b.contributed + b.planned - (a.contributed + a.planned));
+
+      rows.push({
+        month: mk,
         contributed,
         planned,
-        contributed_cum: cumContrib,
-        projected_cum: cumProjected,
-        details: details.sort((a, b) => (b.contributed + b.planned) - (a.contributed + a.planned))
+        contributed_cum: runningContrib,
+        projected_cum: projectedCum,
+        details,
       });
     }
 
-    return out;
+    return rows;
   });
 }

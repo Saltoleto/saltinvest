@@ -33,11 +33,9 @@ export default function GoalsYearPage() {
   const [monthOpen, setMonthOpen] = React.useState<Record<string, boolean>>({});
 
   const totals = React.useMemo(() => {
-    const rows = proj.data ?? [];
-    const ytd = rows.reduce((s, r) => s + (Number(r.contributed_ytd) || 0), 0);
-    const add = rows.reduce((s, r) => s + (Number(r.suggested_remaining_year) || 0), 0);
-    const projected = ytd + add;
-    return { ytd, add, projected };
+    const t = (proj.data as any)?.totals;
+    if (!t) return { ytd: 0, add: 0, projected: 0 };
+    return { ytd: Number(t.ytd) || 0, add: Number(t.projAdd) || 0, projected: Number(t.projected) || 0 };
   }, [proj.data]);
 
   const maxScale = React.useMemo(() => {

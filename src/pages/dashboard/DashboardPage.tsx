@@ -1,8 +1,6 @@
 import React from "react";
-import { Link } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
-import Button from "@/ui/primitives/Button";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
@@ -163,11 +161,11 @@ function YearGoalsProjectionCard({
     goal_id: string;
     name: string;
     target_value: number;
-    contributed_ytd: number;
-    suggested_remaining_year: number;
-    projected_end_year: number;
-    progress_ytd_pct: number;
-    progress_projected_pct: number;
+    ytd: number;
+    proj_add: number;
+    projected: number;
+    ytd_pct: number;
+    projected_pct: number;
   }[];
   loading: boolean;
 }) {
@@ -175,18 +173,30 @@ function YearGoalsProjectionCard({
   const year = now.getFullYear();
   const [collapsed, setCollapsed] = React.useState(false);
 
+  // Defensive: in some integrations the service may return an object before normalization.
+  const safeRows = React.useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+
   const totals = React.useMemo(() => {
-    const ytd = rows.reduce((s, r) => s + (Number(r.contributed_ytd) || 0), 0);
-    const projAdd = rows.reduce((s, r) => s + (Number(r.suggested_remaining_year) || 0), 0);
+    const ytd = safeRows.reduce((s, r) => s + (Number(r.ytd) || 0), 0);
+    const projAdd = safeRows.reduce((s, r) => s + (Number(r.proj_add) || 0), 0);
     return { ytd, projAdd, projected: ytd + projAdd };
-  }, [rows]);
+  }, [safeRows]);
 
   const top = React.useMemo(() => {
-    // Mostra as metas mais relevantes pelo impacto da projeção
-    return [...rows]
-      .sort((a, b) => (b.suggested_remaining_year || 0) - (a.suggested_remaining_year || 0))
+    // No mobile, prioriza "em risco" (projeção < 100%) para maximizar valor percebido.
+    // Depois, ordena pelo gap para 100% e, por fim, pelo impacto (proj_add).
+    return [...safeRows]
+      .sort((a, b) => {
+        const aOk = (a.projected_pct ?? 0) >= 100;
+        const bOk = (b.projected_pct ?? 0) >= 100;
+        if (aOk !== bOk) return aOk ? 1 : -1;
+        const aGap = Math.max(0, 100 - (a.projected_pct ?? 0));
+        const bGap = Math.max(0, 100 - (b.projected_pct ?? 0));
+        if (aGap !== bGap) return bGap - aGap;
+        return (b.proj_add || 0) - (a.proj_add || 0);
+      })
       .slice(0, 5);
-  }, [rows]);
+  }, [safeRows]);
 
   return (
     <Card className="p-4">
@@ -198,21 +208,32 @@ function YearGoalsProjectionCard({
           aria-label={collapsed ? "Expandir evolução anual" : "Recolher evolução anual"}
         >
           <div className="text-slate-100 font-semibold">Evolução anual das metas</div>
-          <div className="mt-1 text-sm text-slate-400">
+          {/* Mobile-first summary: menos texto, mais hierarquia */}
+          <div className="mt-2 grid grid-cols-2 gap-3 sm:hidden">
+            <div className="min-w-0">
+              <div className="text-[11px] text-slate-400">Realizado em {year}</div>
+              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.ytd)}</div>
+            </div>
+            <div className="min-w-0 text-right">
+              <div className="text-[11px] text-slate-400">Falta até Dez</div>
+              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.projAdd)}</div>
+            </div>
+          </div>
+          <div className="mt-1 text-sm text-slate-400 hidden sm:block">
             {loading
               ? "Calculando..."
-              : `Em ${year}: ${formatBRL(totals.ytd)} até agora • Projeção: ${formatBRL(totals.projected)} (${formatBRL(
-                  totals.projAdd
-                )} a mais)`}
+              : `Em ${year}: ${formatBRL(totals.ytd)} realizado • Falta: ${formatBRL(totals.projAdd)} até Dez (${formatBRL(
+                  totals.projected
+                )} no total do plano)`}
           </div>
+          {!loading && totals.projAdd > 0 ? (
+            <div className="mt-2 sm:hidden">
+              <Badge variant="success">{formatBRL(totals.projAdd)} faltam se mantiver o plano</Badge>
+            </div>
+          ) : null}
         </button>
 
         <div className="shrink-0 flex items-center gap-2">
-          <Link to="/app/metas/ano" className="hidden sm:block">
-            <Button variant="secondary" className="h-9 px-3">
-              Ver detalhes
-            </Button>
-          </Link>
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
@@ -232,13 +253,13 @@ function YearGoalsProjectionCard({
               <Skeleton className="h-16 w-full" />
               <Skeleton className="h-16 w-full" />
             </div>
-          ) : rows.length ? (
+          ) : safeRows.length ? (
             <div className="mt-4 grid gap-3">
               {/* Totais: barra premium */}
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm text-slate-400">Avanço no ano</div>
-                  <Badge variant="info">Projeção até Dez</Badge>
+                  <Badge variant="info">Base: Parcelas do objetivo</Badge>
                 </div>
                 <div className="mt-3 h-3 rounded-full bg-white/10 overflow-hidden flex">
                   {/* já realizado */}
@@ -246,9 +267,15 @@ function YearGoalsProjectionCard({
                   {/* projeção */}
                   <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, 100 - Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100))}%` }} />
                 </div>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <div className="text-slate-300">{formatBRL(totals.ytd)} realizado</div>
-                  <div className="text-slate-300">{formatBRL(totals.projected)} projetado</div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
+                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                    Realizado: <span className="font-semibold">{formatBRL(totals.ytd)}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
+                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
+                    Falta até Dez: <span className="font-semibold">{formatBRL(totals.projAdd)}</span>
+                  </span>
                 </div>
               </div>
 
@@ -256,23 +283,32 @@ function YearGoalsProjectionCard({
               <div className="grid gap-2">
                 {top.map((g) => {
                   const target = Math.max(0, Number(g.target_value) || 0);
-                  const ytd = Math.max(0, Number(g.contributed_ytd) || 0);
-                  const proj = Math.max(ytd, Number(g.projected_end_year) || 0);
+                  const ytd = Math.max(0, Number(g.ytd) || 0);
+                  const remaining = Math.max(0, Number(g.proj_add) || 0);
+                  const totalPlan = ytd + remaining;
                   const ytdPct = target > 0 ? Math.min(100, (ytd / target) * 100) : 0;
-                  const projPct = target > 0 ? Math.min(100, (proj / target) * 100) : 0;
+                  const projPct = target > 0 ? Math.min(100, (totalPlan / target) * 100) : 0;
 
                   return (
                     <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-slate-100 font-medium truncate">{g.name}</div>
-                          <div className="mt-1 text-sm text-slate-400">
-                            {formatBRL(ytd)} agora • {formatBRL(proj)} até Dez • alvo {formatBRL(target)}
+                          <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-slate-300">
+                            <div className="min-w-0">
+                              <div className="text-[11px] text-slate-400">Agora</div>
+                              <div className="font-semibold truncate">{formatBRL(ytd)}</div>
+                            </div>
+                            <div className="min-w-0 text-right">
+                              <div className="text-[11px] text-slate-400">Falta até Dez</div>
+                              <div className="font-semibold truncate">{formatBRL(remaining)}</div>
+                            </div>
                           </div>
+                          <div className="mt-1 text-xs text-slate-500">Total do plano: {formatBRL(totalPlan)} • Alvo: {formatBRL(target)}</div>
                         </div>
                         <div className="shrink-0 text-right">
                           <div className="text-slate-100 font-semibold">{formatPercent(ytdPct)}</div>
-                          <div className="text-xs text-slate-400">→ {formatPercent(projPct)}</div>
+                          <div className="text-xs text-slate-400">Proj.: {formatPercent(projPct)}</div>
                         </div>
                       </div>
 
@@ -283,20 +319,18 @@ function YearGoalsProjectionCard({
                         </div>
                       </div>
 
-                      {g.suggested_remaining_year > 0 ? (
+                      {remaining > 0 ? (
                         <div className="mt-2 text-xs text-slate-400">
-                          Mantendo o plano: +{formatBRL(g.suggested_remaining_year)} até o fim do ano
+                          Mantendo o plano: {formatBRL(remaining)} até Dez
                         </div>
                       ) : (
-                        <div className="mt-2 text-xs text-slate-500">Sem projeção para o restante do ano (fora do plano mensal).</div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {ytd >= target && target > 0 ? "Meta concluída" : "Sem parcelas abertas até Dez"}
+                        </div>
                       )}
                     </div>
                   );
                 })}
-              </div>
-
-              <div className="text-xs text-slate-500">
-                Projeção baseada nos valores planejados do Plano do mês até Dezembro.
               </div>
             </div>
           ) : (
@@ -430,7 +464,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Nova entrega de alto valor: visão de avanço anual + projeção */}
-      <YearGoalsProjectionCard rows={yearGoals.data ?? []} loading={yearGoals.loading} />
+      <YearGoalsProjectionCard rows={yearGoals.data?.goals ?? []} loading={yearGoals.loading} />
     </div>
   );
 }

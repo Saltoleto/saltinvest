@@ -64,24 +64,23 @@ function monthsRemainingFromNow(targetDateISO: string): number {
 }
 
 async function getContribSums(uid: string, goalIds: string[]): Promise<Record<string, number>> {
-  // Used by multiple plan widgets; cache briefly to avoid repeat calls.
   const key = k(uid, `contrib:${goalIds.sort().join(",")}`);
   return cacheFetch(key, TTL_MS, async () => {
-  const sums: Record<string, number> = {};
-  if (!goalIds.length) return sums;
+    const sums: Record<string, number> = {};
+    if (!goalIds.length) return sums;
 
-  const { data, error } = await supabase
-    .from("aportes")
-    .select("objetivo_id, valor_aporte")
-    .eq("usuario_id", uid)
-    .in("objetivo_id", goalIds);
-  if (error) throw error;
+    const { data, error } = await supabase
+      .from("submetas")
+      .select("meta_id, valor_aportado")
+      .eq("user_id", uid)
+      .in("meta_id", goalIds);
+    if (error) throw error;
 
-  for (const r of data ?? []) {
-    const gid = String((r as any).objetivo_id);
-    sums[gid] = (sums[gid] ?? 0) + (Number((r as any).valor_aporte) || 0);
-  }
-  return sums;
+    for (const r of data ?? []) {
+      const gid = String((r as any).meta_id);
+      sums[gid] = (sums[gid] ?? 0) + (Number((r as any).valor_aportado) || 0);
+    }
+    return sums;
   });
 }
 
@@ -90,18 +89,19 @@ export async function getMonthlyPlanSummary(monthISO?: string): Promise<MonthlyP
   const m = normalizeMonthISO(monthISO);
   return cacheFetch(k(uid, `summary:${m}`), TTL_MS, async () => {
     const { data, error } = await supabase
-      .from("v_plano_mensal_resumo")
-      .select("usuario_id, mes_referencia, valor_total_sugerido, valor_total_aportado, valor_total_restante")
-      .eq("usuario_id", uid)
-      .eq("mes_referencia", m)
+      .from("vw_planejamento_mensal")
+      .select("user_id, mes, total_sugerido, total_aportado, restante_mes")
+      .eq("user_id", uid)
+      .eq("mes", m)
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
+
     return {
       user_id: uid,
-      total_suggested_this_month: Number((data as any).valor_total_sugerido) || 0,
-      total_contributed_this_month: Number((data as any).valor_total_aportado) || 0,
-      total_remaining_this_month: Number((data as any).valor_total_restante) || 0
+      total_suggested_this_month: Number((data as any).total_sugerido) || 0,
+      total_contributed_this_month: Number((data as any).total_aportado) || 0,
+      total_remaining_this_month: Number((data as any).restante_mes) || 0
     };
   });
 }
@@ -111,64 +111,51 @@ export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPl
   const m = normalizeMonthISO(monthISO);
 
   return cacheFetch(k(uid, `goals:${m}`), TTL_MS, async () => {
+    // One row per meta for the selected month.
+    const { data: subs, error: e1 } = await supabase
+      .from("submetas")
+      .select("id, meta_id, valor_esperado, valor_aportado, status, metas(nome, valor_alvo, data_alvo, is_plano_mensal)")
+      .eq("user_id", uid)
+      .eq("data_referencia", m);
+    if (e1) throw e1;
 
-  const { data: detail, error: e1 } = await supabase
-    .from("v_plano_mensal_detalhe")
-    .select("objetivo_id, objetivo_nome, participa_plano_mensal, valor_planejado, valor_pago")
-    .eq("usuario_id", uid)
-    .eq("mes_referencia", m)
-    .eq("participa_plano_mensal", true);
-  if (e1) throw e1;
+    const filtered = (subs ?? []).filter((s: any) => !!s.metas?.is_plano_mensal);
+    const goalIds = filtered.map((s: any) => String(s.meta_id));
+    if (!goalIds.length) return [];
 
-  const goalIds = (detail ?? []).map((r: any) => String(r.objetivo_id));
-  if (!goalIds.length) return [];
+    const sums = await getContribSums(uid, goalIds);
 
-  const { data: goals, error: e2 } = await supabase
-    .from("objetivos")
-    .select("id, nome, valor_alvo, data_alvo, participa_plano_mensal")
-    .eq("usuario_id", uid)
-    .in("id", goalIds);
-  if (e2) throw e2;
+    return filtered.map((s: any) => {
+      const gid = String(s.meta_id);
+      const g = s.metas;
+      const target = Number(g?.valor_alvo) || 0;
+      const contributed = sums[gid] ?? 0;
+      const remainingValue = Math.max(0, target - contributed);
+      const suggested = Number(s.valor_esperado) || 0;
+      const paid = Number(s.valor_aportado) || 0;
+      const remainingThisMonth = Math.max(0, suggested - paid);
 
-  const byId = new Map<string, any>();
-  for (const g of goals ?? []) byId.set(String((g as any).id), g);
-
-  const sums = await getContribSums(uid, goalIds);
-
-  return (detail ?? []).map((r: any) => {
-    const gid = String(r.objetivo_id);
-    const g = byId.get(gid);
-    const target = Number(g?.valor_alvo) || 0;
-    const contributed = sums[gid] ?? 0;
-    const remainingValue = Math.max(0, target - contributed);
-    const suggested = Number(r.valor_planejado) || 0;
-    const paid = Number(r.valor_pago) || 0;
-    const remainingThisMonth = Math.max(0, suggested - paid);
-    return {
-      user_id: uid,
-      goal_id: gid,
-      name: String(g?.nome ?? r.objetivo_nome ?? ""),
-      target_value: target,
-      target_date: String(g?.data_alvo ?? ""),
-      is_monthly_plan: !!g?.participa_plano_mensal,
-      current_contributed: contributed,
-      remaining_value: remainingValue,
-      months_remaining: monthsRemainingFromNow(String(g?.data_alvo ?? m)),
-      suggested_this_month: suggested,
-      contributed_this_month: paid,
-      remaining_this_month: remainingThisMonth
-    };
-  });
+      return {
+        user_id: uid,
+        goal_id: gid,
+        name: String(g?.nome ?? ""),
+        target_value: target,
+        target_date: String(g?.data_alvo ?? ""),
+        is_monthly_plan: !!g?.is_plano_mensal,
+        current_contributed: contributed,
+        remaining_value: remainingValue,
+        months_remaining: monthsRemainingFromNow(String(g?.data_alvo ?? m)),
+        suggested_this_month: suggested,
+        contributed_this_month: paid,
+        remaining_this_month: remainingThisMonth
+      };
+    });
   });
 }
 
 export async function listMonthlyPlanRanking(monthISO?: string): Promise<MonthlyPlanRankingRow[]> {
   const rows = await listMonthlyPlanGoals(monthISO);
 
-  // Heurística simples (client-side):
-  // 1) menor meses restantes
-  // 2) maior restante total
-  // 3) maior restante do mês
   const sorted = [...rows].sort((a, b) => {
     if (a.months_remaining !== b.months_remaining) return a.months_remaining - b.months_remaining;
     if (a.remaining_value !== b.remaining_value) return b.remaining_value - a.remaining_value;

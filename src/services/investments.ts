@@ -5,7 +5,6 @@ import { cacheFetch, cacheInvalidate } from "./cache";
 const TTL_MS = 15_000;
 const k = (uid: string, suffix: string) => `u:${uid}:investments:${suffix}`;
 
-
 // Legacy shapes used by existing UI.
 export type InvestmentRow = {
   id: string;
@@ -34,12 +33,12 @@ export type AllocationRow = {
   goal_name?: string | null;
 };
 
-
 function mapLiquidezToLegacy(v: string): "diaria" | "vencimento" {
-  return String(v) === "DIARIA" ? "diaria" : "vencimento";
+  // SQL defines `liquidez` as TEXT. We consider DIARIA as daily and everything else as due-date.
+  return String(v).toUpperCase() === "DIARIA" ? "diaria" : "vencimento";
 }
 
-function mapLegacyToLiquidez(v: "diaria" | "vencimento"): "DIARIA" | "NO_VENCIMENTO" {
+function mapLegacyToLiquidez(v: "diaria" | "vencimento"): string {
   return v === "diaria" ? "DIARIA" : "NO_VENCIMENTO";
 }
 
@@ -48,74 +47,81 @@ function normalizeClassId(input: string | null | undefined): string {
   throw new Error("Classe é obrigatória.");
 }
 
+
+
 export async function listInvestments(opts?: { goal_id?: string | null }): Promise<InvestmentRow[]> {
   const uid = await requireUserId();
 
   const goalId = opts?.goal_id ? String(opts.goal_id) : "";
   return cacheFetch(k(uid, `list:${goalId || "all"}`), TTL_MS, async () => {
+    let restrictIds: string[] | null = null;
 
-    let restrictAppIds: string[] | null = null;
     if (goalId) {
-      // Filter investments that have at least one aporte for the selected goal.
-      const { data: aportes, error: eA } = await supabase
-        .from("aportes")
-        .select("aplicacao_id")
-        .eq("usuario_id", uid)
-        .eq("objetivo_id", goalId);
+      // Investments that have allocations to submetas of that meta.
+      const { data: subs, error: eS } = await supabase
+        .from("submetas")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("meta_id", goalId);
+      if (eS) throw eS;
+      const subIds = (subs ?? []).map((s: any) => String(s.id));
+      if (!subIds.length) return [];
+
+      const { data: allocs, error: eA } = await supabase
+        .from("alocacoes_investimento")
+        .select("investimento_id")
+        .eq("user_id", uid)
+        .in("submeta_id", subIds);
       if (eA) throw eA;
-      const ids = Array.from(new Set((aportes ?? []).map((a: any) => String(a.aplicacao_id)))).filter(Boolean);
+      const ids = Array.from(new Set((allocs ?? []).map((a: any) => String(a.investimento_id)))).filter(Boolean);
       if (!ids.length) return [];
-      restrictAppIds = ids;
+      restrictIds = ids;
     }
 
     let q = supabase
-      .from("aplicacoes")
+      .from("investimentos")
       .select(
-        "id, usuario_id, nome, valor_aplicado, categoria_ativo_id, instituicao_financeira_id, liquidez, data_vencimento, coberto_fgc, status, criado_em, atualizado_em, categorias_ativos(nome), instituicoes_financeiras(nome)"
+        "id, user_id, nome, valor_total, classe_id, instituicao_id, liquidez, data_vencimento, coberto_fgc, status, created_at, classes_investimento(nome), instituicoes(nome)"
       )
-      .eq("usuario_id", uid)
-      .order("criado_em", { ascending: false });
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
 
-    if (restrictAppIds) q = q.in("id", restrictAppIds);
+    if (restrictIds) q = q.in("id", restrictIds);
 
     const { data, error } = await q;
     if (error) throw error;
 
-    const appIds = (data ?? []).map((r: any) => String(r.id));
+    const invIds = (data ?? []).map((r: any) => String(r.id));
     const totalsById: Record<string, number> = {};
-    if (appIds.length) {
-      const { data: aportes, error: e2 } = await supabase
-        .from("aportes")
-        .select("aplicacao_id, valor_aporte")
-        .eq("usuario_id", uid)
-        .in("aplicacao_id", appIds);
+    if (invIds.length) {
+      const { data: allocs, error: e2 } = await supabase
+        .from("alocacoes_investimento")
+        .select("investimento_id, valor_alocado")
+        .eq("user_id", uid)
+        .in("investimento_id", invIds);
       if (e2) throw e2;
-      for (const a of aportes ?? []) {
-        const id = String((a as any).aplicacao_id);
-        totalsById[id] = (totalsById[id] ?? 0) + (Number((a as any).valor_aporte) || 0);
+      for (const a of allocs ?? []) {
+        const id = String((a as any).investimento_id);
+        totalsById[id] = (totalsById[id] ?? 0) + (Number((a as any).valor_alocado) || 0);
       }
     }
 
     return (data ?? []).map((r: any) => {
-      const className = r.categorias_ativos?.nome ?? null;
-      const rawCatId = String(r.categoria_ativo_id);
-      const uiCatId = rawCatId;
-
       return {
         id: String(r.id),
-        user_id: String(r.usuario_id),
+        user_id: String(r.user_id),
         name: String(r.nome),
-        total_value: Number(r.valor_aplicado) || 0,
-        class_id: uiCatId,
-        institution_id: r.instituicao_financeira_id ? String(r.instituicao_financeira_id) : null,
+        total_value: Number(r.valor_total) || 0,
+        class_id: r.classe_id ? String(r.classe_id) : null,
+        institution_id: r.instituicao_id ? String(r.instituicao_id) : null,
         due_date: r.data_vencimento ?? null,
-        liquidity_type: mapLiquidezToLegacy(String(r.liquidez)),
+        liquidity_type: mapLiquidezToLegacy(String(r.liquidez ?? "")),
         is_fgc_covered: !!r.coberto_fgc,
-        is_redeemed: String(r.status) === "RESGATADA",
-        created_at: r.criado_em ?? null,
-        updated_at: r.atualizado_em ?? null,
-        class_name: String(className ?? "") || null,
-        institution_name: r.instituicoes_financeiras?.nome ?? null,
+        is_redeemed: String(r.status) === "RESGATADO",
+        created_at: r.created_at ?? null,
+        updated_at: null,
+        class_name: r.classes_investimento?.nome ?? null,
+        institution_name: r.instituicoes?.nome ?? null,
         allocated_total: totalsById[String(r.id)] ?? 0
       } as InvestmentRow;
     });
@@ -126,31 +132,31 @@ export async function getInvestment(id: string): Promise<InvestmentRow | null> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, `get:${id}`), TTL_MS, async () => {
     const { data, error } = await supabase
-      .from("aplicacoes")
-      .select("id, usuario_id, nome, valor_aplicado, categoria_ativo_id, instituicao_financeira_id, liquidez, data_vencimento, coberto_fgc, status, criado_em, atualizado_em, categorias_ativos(nome), instituicoes_financeiras(nome)")
+      .from("investimentos")
+      .select(
+        "id, user_id, nome, valor_total, classe_id, instituicao_id, liquidez, data_vencimento, coberto_fgc, status, created_at, classes_investimento(nome), instituicoes(nome)"
+      )
       .eq("id", id)
-      .eq("usuario_id", uid)
+      .eq("user_id", uid)
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    const rawCatId = String((data as any).categoria_ativo_id);
-    const uiCatId = rawCatId;
 
     return {
       id: String((data as any).id),
-      user_id: String((data as any).usuario_id),
+      user_id: String((data as any).user_id),
       name: String((data as any).nome),
-      total_value: Number((data as any).valor_aplicado) || 0,
-      class_id: uiCatId,
-      institution_id: (data as any).instituicao_financeira_id ? String((data as any).instituicao_financeira_id) : null,
+      total_value: Number((data as any).valor_total) || 0,
+      class_id: (data as any).classe_id ? String((data as any).classe_id) : null,
+      institution_id: (data as any).instituicao_id ? String((data as any).instituicao_id) : null,
       due_date: (data as any).data_vencimento ?? null,
-      liquidity_type: mapLiquidezToLegacy(String((data as any).liquidez)),
+      liquidity_type: mapLiquidezToLegacy(String((data as any).liquidez ?? "")),
       is_fgc_covered: !!(data as any).coberto_fgc,
-      is_redeemed: String((data as any).status) === "RESGATADA",
-      created_at: (data as any).criado_em ?? null,
-      updated_at: (data as any).atualizado_em ?? null,
-      class_name: (data as any).categorias_ativos?.nome ?? null,
-      institution_name: (data as any).instituicoes_financeiras?.nome ?? null
+      is_redeemed: String((data as any).status) === "RESGATADO",
+      created_at: (data as any).created_at ?? null,
+      updated_at: null,
+      class_name: (data as any).classes_investimento?.nome ?? null,
+      institution_name: (data as any).instituicoes?.nome ?? null
     };
   });
 }
@@ -158,31 +164,29 @@ export async function getInvestment(id: string): Promise<InvestmentRow | null> {
 export async function listAllocationsByInvestment(investmentId: string): Promise<AllocationRow[]> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, `alloc:${investmentId}`), TTL_MS, async () => {
+    // Join: allocations -> submetas -> metas (name)
     const { data, error } = await supabase
-      .from("aportes")
-      .select("id, aplicacao_id, objetivo_id, valor_aporte, criado_em, objetivos(nome)")
-      .eq("usuario_id", uid)
-      .eq("aplicacao_id", investmentId)
-      .order("criado_em", { ascending: true });
+      .from("alocacoes_investimento")
+      .select("id, investimento_id, submeta_id, valor_alocado, created_at, submetas(meta_id, metas(nome))")
+      .eq("user_id", uid)
+      .eq("investimento_id", investmentId)
+      .order("created_at", { ascending: true });
     if (error) throw error;
+
     return (data ?? []).map((r: any) => ({
       id: String(r.id),
-      investment_id: String(r.aplicacao_id),
-      goal_id: String(r.objetivo_id),
-      amount: Number(r.valor_aporte) || 0,
-      created_at: r.criado_em ?? null,
-      goal_name: r.objetivos?.nome ?? null
+      investment_id: String(r.investimento_id),
+      goal_id: String(r.submetas?.meta_id ?? ""),
+      amount: Number(r.valor_alocado) || 0,
+      created_at: r.created_at ?? null,
+      goal_name: r.submetas?.metas?.nome ?? null
     }));
   });
 }
 
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function monthStartISO(d = new Date()): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
-}
+// NOTE: Allocation picking is no longer done client-side.
+// Allocations are now applied via the RPC fn_alocar_investimento_meta, which
+// distributes values across open submetas and records one allocation per submeta.
 
 export async function saveInvestmentWithAllocations(input: {
   id?: string;
@@ -203,58 +207,51 @@ export async function saveInvestmentWithAllocations(input: {
 
   const row: any = {
     id: input.id,
-    usuario_id: uid,
+    user_id: uid,
     nome: input.name.trim(),
-    valor_aplicado: input.total_value,
-    categoria_ativo_id: classId,
-    instituicao_financeira_id: input.institution_id,
+    valor_total: input.total_value,
+    classe_id: classId,
+    instituicao_id: input.institution_id,
     liquidez,
     data_vencimento: due,
     coberto_fgc: !!input.is_fgc_covered,
-    status: "ATIVA"
+    status: "ATIVO"
   };
 
-  const { data: saved, error } = await supabase.from("aplicacoes").upsert(row).select("id").single();
+  const { data: saved, error } = await supabase.from("investimentos").upsert(row).select("id").single();
   if (error) throw error;
-  const appId = String(saved.id);
+  const invId = String((saved as any).id);
 
-  // Replace aportes (allocations) for this application.
-  const { error: eDel } = await supabase.from("aportes").delete().eq("usuario_id", uid).eq("aplicacao_id", appId);
-  if (eDel) throw eDel;
+  // Replace allocations for this investment.
+  // With the traceable allocation model (one row per affected submeta), we must
+  // properly estornar existing allocations before re-allocating.
+  const { error: eReset } = await supabase.rpc("fn_reset_investimento_alocacoes", {
+    p_investimento_id: invId
+  });
+  if (eReset) throw eReset;
 
   const allocs = (input.allocations ?? []).filter((a) => Number(a.amount) > 0);
   if (allocs.length) {
-    const goalIds = allocs.map((a) => a.goal_id);
-    const m = monthStartISO();
-    const { data: parcelas, error: ePar } = await supabase
-      .from("parcelas_objetivo")
-      .select("id, objetivo_id")
-      .eq("usuario_id", uid)
-      .eq("mes_referencia", m)
-      .in("objetivo_id", goalIds);
-    if (ePar) throw ePar;
-    const parcelaByGoal: Record<string, string> = {};
-    for (const p of parcelas ?? []) parcelaByGoal[String((p as any).objetivo_id)] = String((p as any).id);
-
-    const nowIso = new Date().toISOString();
-    const toInsert = allocs.map((a) => ({
-      usuario_id: uid,
-      aplicacao_id: appId,
-      objetivo_id: a.goal_id,
-      parcela_objetivo_id: parcelaByGoal[a.goal_id] ?? null,
-      valor_aporte: Number(a.amount) || 0,
-      aportado_em: nowIso
-    }));
-    const { error: eIns } = await supabase.from("aportes").insert(toInsert);
-    if (eIns) throw eIns;
+    // Allocate using an RPC that distributes the value across open submetas
+    // and writes one allocation row per affected submeta. This guarantees perfect estorno.
+    for (const a of allocs) {
+      const { error: eAlloc } = await supabase.rpc("fn_alocar_investimento_meta", {
+        p_investimento_id: invId,
+        p_meta_id: String(a.goal_id),
+        p_valor: Number(a.amount) || 0,
+        p_partir_de: null
+      });
+      if (eAlloc) throw eAlloc;
+    }
   }
 
   cacheInvalidate(`u:${uid}:investments:`);
   cacheInvalidate(`u:${uid}:goals:`);
   cacheInvalidate(`u:${uid}:monthly:`);
   cacheInvalidate(`u:${uid}:analytics:`);
+  cacheInvalidate(`u:${uid}:yearly:`);
 
-  return appId;
+  return invId;
 }
 
 export async function setInvestmentRedeemed(id: string, value: boolean): Promise<void> {
@@ -263,17 +260,12 @@ export async function setInvestmentRedeemed(id: string, value: boolean): Promise
   }
 
   const uid = await requireUserId();
-  const { data, error } = await supabase
-    .from("aplicacoes")
-    .select("id, valor_aplicado")
+  const { error } = await supabase
+    .from("investimentos")
+    .update({ status: "RESGATADO" })
     .eq("id", id)
-    .eq("usuario_id", uid)
-    .single();
+    .eq("user_id", uid);
   if (error) throw error;
-
-  const valor = Number((data as any).valor_aplicado) || 0;
-  const { error: e2 } = await supabase.rpc("fn_aplicacoes_resgatar", { p_aplicacao_id: id, p_valor_resgatado: valor });
-  if (e2) throw e2;
 
   cacheInvalidate(`u:${uid}:investments:`);
   cacheInvalidate(`u:${uid}:analytics:`);
@@ -281,7 +273,7 @@ export async function setInvestmentRedeemed(id: string, value: boolean): Promise
 
 export async function deleteInvestment(id: string): Promise<void> {
   const uid = await requireUserId();
-  const { error } = await supabase.from("aplicacoes").delete().eq("id", id).eq("usuario_id", uid);
+  const { error } = await supabase.from("investimentos").delete().eq("id", id).eq("user_id", uid);
   if (error) throw error;
 
   cacheInvalidate(`u:${uid}:investments:`);

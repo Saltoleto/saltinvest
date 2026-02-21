@@ -30,20 +30,21 @@ export async function getEquitySummary(): Promise<EquitySummary> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, "equity"), TTL_MS, async () => {
     const { data, error } = await supabase
-      .from("aplicacoes")
-      .select("valor_aplicado, liquidez, coberto_fgc, status")
-      .eq("usuario_id", uid);
+      .from("investimentos")
+      .select("valor_total, liquidez, coberto_fgc, status")
+      .eq("user_id", uid);
     if (error) throw error;
 
     let total = 0;
     let liquid = 0;
     let fgc = 0;
+
     for (const r of data ?? []) {
       const row: any = r;
-      if (String(row.status) !== "ATIVA") continue;
-      const v = Number(row.valor_aplicado) || 0;
+      if (String(row.status) !== "ATIVO") continue;
+      const v = Number(row.valor_total) || 0;
       total += v;
-      if (String(row.liquidez) === "DIARIA") liquid += v;
+      if (String(row.liquidez).toUpperCase() === "DIARIA") liquid += v;
       if (row.coberto_fgc) fgc += v;
     }
 
@@ -55,17 +56,18 @@ export async function getFgcExposure(): Promise<FgcExposureRow[]> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, "fgc"), TTL_MS, async () => {
     const { data, error } = await supabase
-      .from("aplicacoes")
-      .select("valor_aplicado, coberto_fgc, status, instituicoes_financeiras(nome)")
-      .eq("usuario_id", uid);
+      .from("investimentos")
+      .select("valor_total, coberto_fgc, status, instituicoes(nome)")
+      .eq("user_id", uid);
     if (error) throw error;
 
     const byInst: Record<string, { covered: number; uncovered: number; total: number }> = {};
+
     for (const r of data ?? []) {
       const row: any = r;
-      if (String(row.status) !== "ATIVA") continue;
-      const instName = String(row.instituicoes_financeiras?.nome ?? "Sem instituição");
-      const v = Number(row.valor_aplicado) || 0;
+      if (String(row.status) !== "ATIVO") continue;
+      const instName = String(row.instituicoes?.nome ?? "Sem instituição");
+      const v = Number(row.valor_total) || 0;
       byInst[instName] = byInst[instName] || { covered: 0, uncovered: 0, total: 0 };
       byInst[instName].total += v;
       if (row.coberto_fgc) byInst[instName].covered += v;
@@ -89,10 +91,10 @@ export async function countInvestmentsThisMonth(): Promise<number> {
   const start = monthStartISO();
   return cacheFetch(k(uid, `count:${start}`), TTL_MS, async () => {
     const { count, error } = await supabase
-      .from("aplicacoes")
+      .from("investimentos")
       .select("id", { count: "exact", head: true })
-      .eq("usuario_id", uid)
-      .gte("criado_em", `${start}T00:00:00Z`);
+      .eq("user_id", uid)
+      .gte("created_at", `${start}T00:00:00Z`);
     if (error) throw error;
     return count ?? 0;
   });

@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { requireUserId } from "./db";
 import { cacheFetch, cacheInvalidate } from "./cache";
 
-// UI expects the legacy shape (classes table with `target_percent`).
+// UI expects a legacy shape with an optional target_percent.
 export type ClassRow = {
   id: string;
   user_id: string;
@@ -12,65 +12,39 @@ export type ClassRow = {
   updated_at?: string | null;
 };
 
-const DEFAULT_POLICY_NAME = "Política Principal";
 const TTL_MS = 30_000;
-
-function k(uid: string, suffix: string) {
-  return `u:${uid}:classes:${suffix}`;
-}
-
-async function getOrCreatePrimaryPolicyId(uid: string): Promise<string> {
-  return cacheFetch(k(uid, "policy"), TTL_MS, async () => {
-    const { data: existing, error: e1 } = await supabase
-      .from("politicas_alocacao")
-      .select("id")
-      .eq("usuario_id", uid)
-      .order("criado_em", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (e1) throw e1;
-    if (existing?.id) return String(existing.id);
-
-    const { data, error } = await supabase
-      .from("politicas_alocacao")
-      .insert({ usuario_id: uid, nome: DEFAULT_POLICY_NAME })
-      .select("id")
-      .single();
-    if (error) throw error;
-
-    return String(data.id);
-  });
-}
+const k = (uid: string, suffix: string) => `u:${uid}:classes:${suffix}`;
 
 export async function listClasses(): Promise<ClassRow[]> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, "list"), TTL_MS, async () => {
-    const policyId = await getOrCreatePrimaryPolicyId(uid);
-
-    const { data: cats, error: e1 } = await supabase
-      .from("categorias_ativos")
-      .select("id, usuario_id, nome, criado_em")
-      .eq("usuario_id", uid)
-      .order("criado_em", { ascending: false });
+    const { data: classes, error: e1 } = await supabase
+      .from("classes_investimento")
+      .select("id, user_id, nome, created_at")
+      .eq("user_id", uid)
+      .order("created_at", { ascending: false });
     if (e1) throw e1;
 
-    const { data: items, error: e2 } = await supabase
-      .from("politicas_alocacao_itens")
-      .select("categoria_ativo_id, percentual_alvo")
-      .eq("politica_alocacao_id", policyId);
-    if (e2) throw e2;
+    const ids = (classes ?? []).map((c: any) => String(c.id));
+    const pctById: Record<string, number> = {};
+    if (ids.length) {
+      const { data: targets, error: e2 } = await supabase
+        .from("alvos_carteira")
+        .select("classe_id, percentual_alvo")
+        .eq("user_id", uid)
+        .in("classe_id", ids);
+      if (e2) throw e2;
+      for (const t of targets ?? []) {
+        pctById[String((t as any).classe_id)] = Number((t as any).percentual_alvo) || 0;
+      }
+    }
 
-    const pctByCat = (items ?? []).reduce((acc: Record<string, number>, r: any) => {
-      acc[String(r.categoria_ativo_id)] = Number(r.percentual_alvo) || 0;
-      return acc;
-    }, {});
-
-    return (cats ?? []).map((c: any) => ({
+    return (classes ?? []).map((c: any) => ({
       id: String(c.id),
-      user_id: String(c.usuario_id),
+      user_id: String(c.user_id),
       name: String(c.nome),
-      target_percent: pctByCat[String(c.id)] || 0,
-      created_at: c.criado_em ?? null,
+      target_percent: pctById[String(c.id)] ?? 0,
+      created_at: c.created_at ?? null,
       updated_at: null
     }));
   });
@@ -78,48 +52,39 @@ export async function listClasses(): Promise<ClassRow[]> {
 
 export async function upsertClass(payload: { id?: string; name: string; target_percent?: number | null }): Promise<void> {
   const uid = await requireUserId();
-  const policyId = await getOrCreatePrimaryPolicyId(uid);
-
   const name = payload.name.trim();
   if (!name) throw new Error("Nome é obrigatório.");
 
-  let categoryId = payload.id;
+  let classId = payload.id;
 
-  if (categoryId) {
-    const { error } = await supabase.from("categorias_ativos").update({ nome: name }).eq("id", categoryId).eq("usuario_id", uid);
+  if (classId) {
+    const { error } = await supabase.from("classes_investimento").update({ nome: name }).eq("id", classId).eq("user_id", uid);
     if (error) throw error;
   } else {
     const { data, error } = await supabase
-      .from("categorias_ativos")
-      .insert({ usuario_id: uid, nome: name })
+      .from("classes_investimento")
+      .insert({ user_id: uid, nome: name })
       .select("id")
       .single();
     if (error) throw error;
-    categoryId = String(data.id);
+    classId = String((data as any).id);
   }
 
-  // Somente a tela de "Alvos" deve alterar percentuais.
+  // Only targets screen should alter percentages, but we support it here for full compatibility.
   if (Object.prototype.hasOwnProperty.call(payload, "target_percent")) {
     const pct = Number(payload.target_percent ?? 0);
+
+    // Remove existing target for this class (schema doesn't define a unique constraint).
+    const { error: eDel } = await supabase.from("alvos_carteira").delete().eq("user_id", uid).eq("classe_id", classId);
+    if (eDel) throw eDel;
+
     if (pct > 0) {
-      // Constraint requires 0 < percentual_alvo <= 100.
-      const { error } = await supabase.from("politicas_alocacao_itens").upsert(
-        {
-          politica_alocacao_id: policyId,
-          categoria_ativo_id: categoryId,
-          percentual_alvo: pct
-        },
-        { onConflict: "politica_alocacao_id,categoria_ativo_id" }
-      );
-      if (error) throw error;
-    } else {
-      // Zero means "not part of target policy".
-      const { error } = await supabase
-        .from("politicas_alocacao_itens")
-        .delete()
-        .eq("politica_alocacao_id", policyId)
-        .eq("categoria_ativo_id", categoryId);
-      if (error) throw error;
+      const { error: eIns } = await supabase.from("alvos_carteira").insert({
+        user_id: uid,
+        classe_id: classId,
+        percentual_alvo: pct
+      });
+      if (eIns) throw eIns;
     }
   }
 
@@ -129,22 +94,22 @@ export async function upsertClass(payload: { id?: string; name: string; target_p
 export async function deleteClass(id: string): Promise<void> {
   const uid = await requireUserId();
 
-  // Bloqueia exclusão se houver aplicações vinculadas (FK é RESTRICT).
+  // Prevent deletion when investments are linked.
   const { count, error: eCount } = await supabase
-    .from("aplicacoes")
+    .from("investimentos")
     .select("id", { count: "exact", head: true })
-    .eq("usuario_id", uid)
-    .eq("categoria_ativo_id", id);
+    .eq("user_id", uid)
+    .eq("classe_id", id);
   if (eCount) throw eCount;
   if ((count ?? 0) > 0) {
     throw new Error("Não é possível excluir: existem investimentos vinculados a esta classe. Reatribua-os antes de excluir.");
   }
 
-  // Remove itens da política (FK é RESTRICT).
-  const { error: eDelItens } = await supabase.from("politicas_alocacao_itens").delete().eq("categoria_ativo_id", id);
-  if (eDelItens) throw eDelItens;
+  // Delete target rows.
+  const { error: eDelTargets } = await supabase.from("alvos_carteira").delete().eq("user_id", uid).eq("classe_id", id);
+  if (eDelTargets) throw eDelTargets;
 
-  const { error } = await supabase.from("categorias_ativos").delete().eq("id", id).eq("usuario_id", uid);
+  const { error } = await supabase.from("classes_investimento").delete().eq("id", id).eq("user_id", uid);
   if (error) throw error;
 
   cacheInvalidate(`u:${uid}:classes:`);
