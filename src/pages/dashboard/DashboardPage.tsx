@@ -1,5 +1,7 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
+import Button from "@/ui/primitives/Button";
 import Badge from "@/ui/primitives/Badge";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
@@ -7,6 +9,7 @@ import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
 import { getEquitySummary } from "@/services/analytics";
 import { listInvestments } from "@/services/investments";
+import { getMonthlyPlanSummary } from "@/services/monthly";
 import { listYearGoalProjections } from "@/services/yearly";
 
 function pct(part: number, total: number): number {
@@ -29,7 +32,8 @@ function ConcentrationCard({
   labelA?: string;
   labelB?: string;
 }) {
-  const [collapsed, setCollapsed] = React.useState(false);
+  // Collapsed by default for a cleaner premium dashboard.
+  const [collapsed, setCollapsed] = React.useState(true);
   const total = items.reduce((s, i) => s + (Number(i.value) || 0), 0);
   const top = items.slice(0, 2);
   const a = top[0];
@@ -100,7 +104,13 @@ function ConcentrationCard({
         </>
       ) : (
         <div className="mt-3">
-          <EmptyState title="Sem dados" subtitle="Cadastre investimentos para ver a concentração." />
+          <div className="rounded-xl2 border border-white/10 bg-white/5 p-5 text-center">
+            <div className="text-slate-100 font-medium">Sem dados</div>
+            <div className="mt-1 text-sm text-slate-400">Cadastre investimentos para ver a concentração.</div>
+            <div className="mt-3 flex justify-center">
+              <a href="/app/investments?modal=new" className="rounded-xl2 border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 transition">Cadastrar investimento</a>
+            </div>
+          </div>
         </div>
       )}
     </Card>
@@ -150,6 +160,76 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
       <div className="text-slate-100 font-medium">{title}</div>
       <div className="mt-1 text-sm text-slate-400">{subtitle}</div>
     </div>
+  );
+}
+
+
+function MiniStatPill({ title, value }: { title: string; value: string }) {
+  return (
+    <div className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-2">
+      <div className="text-[11px] text-slate-400">{title}</div>
+      <div className="mt-0.5 text-slate-100 font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function MonthlySummaryCard({
+  summary,
+  loading,
+  onContribute,
+  onOpenPlan,
+  lastUpdatedLabel
+}: {
+  summary: { total_suggested_this_month: number; total_contributed_this_month: number; total_remaining_this_month: number } | null;
+  loading: boolean;
+  onContribute: () => void;
+  onOpenPlan: () => void;
+  lastUpdatedLabel?: string;
+}) {
+  const suggested = Number(summary?.total_suggested_this_month ?? 0);
+  const contributed = Number(summary?.total_contributed_this_month ?? 0);
+  const remaining = Number(summary?.total_remaining_this_month ?? Math.max(0, suggested - contributed));
+
+  return (
+    <Card className="p-4 relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400/30 via-sky-400/35 to-violet-400/25" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-slate-100 font-semibold">Resumo do mês</div>
+          <div className="mt-1 text-sm text-slate-400">
+            {lastUpdatedLabel ? `Atualizado ${lastUpdatedLabel}` : " "}
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <Button onClick={onContribute} size="sm">
+            Aportar agora
+          </Button>
+          <button
+            type="button"
+            onClick={onOpenPlan}
+            className="rounded-xl2 border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200 hover:bg-white/10 transition"
+          >
+            Ver plano
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {loading ? (
+          <>
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+            <Skeleton className="h-14 w-full" />
+          </>
+        ) : (
+          <>
+            <MiniStatPill title="Sugerido do mês" value={formatBRL(suggested)} />
+            <MiniStatPill title="Aportado no mês" value={formatBRL(contributed)} />
+            <MiniStatPill title="Restante do mês" value={formatBRL(remaining)} />
+          </>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -345,7 +425,10 @@ function YearGoalsProjectionCard({
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
+
   const equity = useAsync(() => getEquitySummary(), []);
+  const monthly = useAsync(() => getMonthlyPlanSummary(), []);
   const yearGoals = useAsync(() => listYearGoalProjections(), []);
   const invs = useAsync(() => listInvestments(), []);
 
@@ -384,6 +467,29 @@ export default function DashboardPage() {
 
   const totalEquity = Number(equity.data?.total_equity ?? 0);
   const liquidEquity = Number(equity.data?.liquid_equity ?? 0);
+
+const now = new Date();
+const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null);
+
+React.useEffect(() => {
+  // Marca como "atualizado agora" quando os principais blocos terminarem de carregar.
+  if (!equity.loading && !monthly.loading && !invs.loading && !yearGoals.loading) {
+    setUpdatedAt(new Date());
+  }
+}, [equity.loading, monthly.loading, invs.loading, yearGoals.loading]);
+
+const lastUpdatedLabel = React.useMemo(() => {
+  if (!updatedAt) return "";
+  const diffMs = Date.now() - updatedAt.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin <= 0) return "agora";
+  if (diffMin === 1) return "há 1 min";
+  if (diffMin < 60) return `há ${diffMin} min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH === 1) return "há 1 h";
+  return `há ${diffH} h`;
+}, [updatedAt]);
+
   const fgcTotal = Number(equity.data?.fgc_protected_total ?? 0);
 
   return (
@@ -421,7 +527,10 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Concentração (cards premium, sem gráficos pesados) */}
+
+
+
+{/* Concentração (cards premium, sem gráficos pesados) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {invs.loading ? (
           <Card className="p-4">
@@ -463,7 +572,18 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Nova entrega de alto valor: visão de avanço anual + projeção */}
+      
+
+{/* Resumo do mês + CTA */}
+<MonthlySummaryCard
+  summary={monthly.data}
+  loading={monthly.loading}
+  lastUpdatedLabel={lastUpdatedLabel}
+  onContribute={() => navigate("/app/investments?modal=new")}
+  onOpenPlan={() => navigate("/app/monthly-plan")}
+/>
+
+{/* Nova entrega de alto valor: visão de avanço anual + projeção */}
       <YearGoalsProjectionCard rows={yearGoals.data?.goals ?? []} loading={yearGoals.loading} />
     </div>
   );

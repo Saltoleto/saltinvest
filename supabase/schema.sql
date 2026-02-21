@@ -178,7 +178,7 @@ CREATE TRIGGER trg_prevent_meta_update
 BEFORE UPDATE ON public.metas
 FOR EACH ROW EXECUTE FUNCTION public.fn_lock_meta_update();
 
--- C) RPC: distribuir aporte em submetas e criar alocações por submeta (rastreabilidade) - CORRIGIDA
+-- C) RPC: distribuir aporte em submetas e criar alocações por submeta (rastreabilidade)
 CREATE OR REPLACE FUNCTION public.fn_alocar_investimento_meta(
   p_investimento_id UUID,
   p_meta_id UUID,
@@ -203,8 +203,6 @@ DECLARE
   v_apply NUMERIC(15,2);
   v_meta_alvo NUMERIC(15,2);
   v_total_aportado_meta NUMERIC(15,2);
-  v_last_id UUID;
-  v_last_date DATE;
 BEGIN
   v_user := auth.uid();
   IF v_user IS NULL THEN
@@ -216,24 +214,24 @@ BEGIN
   END IF;
 
   -- valida investimento e ownership
-  SELECT i.valor_total INTO v_valor_invest
-  FROM public.investimentos i
-  WHERE i.id = p_investimento_id AND i.user_id = v_user;
+  SELECT valor_total INTO v_valor_invest
+  FROM public.investimentos
+  WHERE id = p_investimento_id AND user_id = v_user;
 
   IF v_valor_invest IS NULL THEN
     RAISE EXCEPTION 'Investimento não encontrado ou sem permissão';
   END IF;
 
   -- valida meta e ownership
-  PERFORM 1 FROM public.metas m WHERE m.id = p_meta_id AND m.user_id = v_user;
+  PERFORM 1 FROM public.metas WHERE id = p_meta_id AND user_id = v_user;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Meta não encontrada ou sem permissão';
   END IF;
 
   -- valida saldo disponível do investimento (somatório de alocações)
-  SELECT COALESCE(SUM(a.valor_alocado), 0) INTO v_total_alocado
-  FROM public.alocacoes_investimento a
-  WHERE a.investimento_id = p_investimento_id AND a.user_id = v_user;
+  SELECT COALESCE(SUM(valor_alocado), 0) INTO v_total_alocado
+  FROM public.alocacoes_investimento
+  WHERE investimento_id = p_investimento_id AND user_id = v_user;
 
   IF (v_total_alocado + p_valor) > v_valor_invest THEN
     RAISE EXCEPTION 'Saldo insuficiente no investimento. Já alocado: %, total: %', v_total_alocado, v_valor_invest;
@@ -243,13 +241,13 @@ BEGIN
   v_start := COALESCE(p_partir_de, date_trunc('month', now())::date);
 
   FOR r IN
-    SELECT s.id, s.data_referencia, s.valor_esperado, s.valor_aportado
-    FROM public.submetas s
-    WHERE s.meta_id = p_meta_id
-      AND s.user_id = v_user
-      AND s.status = 'ABERTA'
-      AND s.data_referencia >= v_start
-    ORDER BY s.data_referencia
+    SELECT id, data_referencia, valor_esperado, valor_aportado
+    FROM public.submetas
+    WHERE meta_id = p_meta_id
+      AND user_id = v_user
+      AND status = 'ABERTA'
+      AND data_referencia >= v_start
+    ORDER BY data_referencia
   LOOP
     EXIT WHEN v_remaining <= 0;
 
@@ -283,24 +281,23 @@ BEGIN
 
   -- excedente: aplica na última submeta do plano (mantém valor_esperado intacto)
   IF v_remaining > 0 THEN
-    SELECT s.id, s.data_referencia
-      INTO v_last_id, v_last_date
-    FROM public.submetas s
-    WHERE s.meta_id = p_meta_id AND s.user_id = v_user
-    ORDER BY s.data_referencia DESC
+    SELECT id, data_referencia INTO r
+    FROM public.submetas
+    WHERE meta_id = p_meta_id AND user_id = v_user
+    ORDER BY data_referencia DESC
     LIMIT 1;
 
-    IF v_last_id IS NOT NULL THEN
+    IF r.id IS NOT NULL THEN
       UPDATE public.submetas
       SET valor_aportado = COALESCE(valor_aportado, 0) + v_remaining,
           status = 'APORTADA'
-      WHERE id = v_last_id AND user_id = v_user;
+      WHERE id = r.id AND user_id = v_user;
 
       INSERT INTO public.alocacoes_investimento (user_id, investimento_id, submeta_id, valor_alocado)
-      VALUES (v_user, p_investimento_id, v_last_id, v_remaining);
+      VALUES (v_user, p_investimento_id, r.id, v_remaining);
 
-      submeta_id := v_last_id;
-      data_referencia := v_last_date;
+      submeta_id := r.id;
+      data_referencia := r.data_referencia;
       valor_aplicado := v_remaining;
       RETURN NEXT;
 
@@ -309,13 +306,13 @@ BEGIN
   END IF;
 
   -- atualiza status da meta
-  SELECT m.valor_alvo INTO v_meta_alvo
-  FROM public.metas m
-  WHERE m.id = p_meta_id AND m.user_id = v_user;
+  SELECT valor_alvo INTO v_meta_alvo
+  FROM public.metas
+  WHERE id = p_meta_id AND user_id = v_user;
 
-  SELECT COALESCE(SUM(s.valor_aportado), 0) INTO v_total_aportado_meta
-  FROM public.submetas s
-  WHERE s.meta_id = p_meta_id AND s.user_id = v_user;
+  SELECT COALESCE(SUM(valor_aportado), 0) INTO v_total_aportado_meta
+  FROM public.submetas
+  WHERE meta_id = p_meta_id AND user_id = v_user;
 
   UPDATE public.metas
   SET status = CASE WHEN v_total_aportado_meta >= v_meta_alvo THEN 'CONCLUIDA' ELSE 'ATIVA' END
@@ -447,7 +444,6 @@ SELECT
 FROM public.submetas s
 GROUP BY s.user_id, mes;
 
-
 -- =============================================================================
 -- 5) RLS
 -- =============================================================================
@@ -492,3 +488,4 @@ BEGIN
     EXECUTE format('CREATE POLICY %I ON public.%I FOR DELETE USING (auth.uid() = user_id)', 'Users can delete own data', t);
   END LOOP;
 END $$;
+
