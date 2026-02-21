@@ -1,13 +1,15 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import Card from "@/ui/primitives/Card";
 import Badge from "@/ui/primitives/Badge";
+import Button from "@/ui/primitives/Button";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent } from "@/lib/format";
 import { getEquitySummary } from "@/services/analytics";
 import { listInvestments } from "@/services/investments";
-import { listYearGoalProjections } from "@/services/yearly";
+import { listYearGoalProjections, type YearGoalProjectionRow, type YearTotals } from "@/services/yearly";
 
 function pct(part: number, total: number): number {
   if (!total) return 0;
@@ -155,46 +157,30 @@ function EmptyState({ title, subtitle }: { title: string; subtitle: string }) {
 
 function YearGoalsProjectionCard({
   rows,
-  loading
+  totals,
+  loading,
+  year,
+  onYearChange
 }: {
-  rows: {
-    goal_id: string;
-    name: string;
-    target_value: number;
-    ytd: number;
-    proj_add: number;
-    projected: number;
-    ytd_pct: number;
-    projected_pct: number;
-  }[];
+  rows: YearGoalProjectionRow[];
+  totals: YearTotals;
   loading: boolean;
+  year: number;
+  onYearChange: (year: number) => void;
 }) {
-  const now = new Date();
-  const year = now.getFullYear();
   const [collapsed, setCollapsed] = React.useState(false);
 
-  // Defensive: in some integrations the service may return an object before normalization.
-  const safeRows = React.useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
+  const safeRows = Array.isArray(rows) ? rows : [];
 
-  const totals = React.useMemo(() => {
-    const ytd = safeRows.reduce((s, r) => s + (Number(r.ytd) || 0), 0);
-    const projAdd = safeRows.reduce((s, r) => s + (Number(r.proj_add) || 0), 0);
-    return { ytd, projAdd, projected: ytd + projAdd };
-  }, [safeRows]);
+  const yearOptions = React.useMemo(() => {
+    const nowY = new Date().getFullYear();
+    return [nowY, nowY - 1, nowY - 2, nowY - 3, nowY - 4];
+  }, []);
 
   const top = React.useMemo(() => {
-    // No mobile, prioriza "em risco" (projeção < 100%) para maximizar valor percebido.
-    // Depois, ordena pelo gap para 100% e, por fim, pelo impacto (proj_add).
+    // Mostra as metas mais relevantes pelo impacto da projeção
     return [...safeRows]
-      .sort((a, b) => {
-        const aOk = (a.projected_pct ?? 0) >= 100;
-        const bOk = (b.projected_pct ?? 0) >= 100;
-        if (aOk !== bOk) return aOk ? 1 : -1;
-        const aGap = Math.max(0, 100 - (a.projected_pct ?? 0));
-        const bGap = Math.max(0, 100 - (b.projected_pct ?? 0));
-        if (aGap !== bGap) return bGap - aGap;
-        return (b.proj_add || 0) - (a.proj_add || 0);
-      })
+      .sort((a, b) => (b.proj_add || 0) - (a.proj_add || 0))
       .slice(0, 5);
   }, [safeRows]);
 
@@ -208,32 +194,34 @@ function YearGoalsProjectionCard({
           aria-label={collapsed ? "Expandir evolução anual" : "Recolher evolução anual"}
         >
           <div className="text-slate-100 font-semibold">Evolução anual das metas</div>
-          {/* Mobile-first summary: menos texto, mais hierarquia */}
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:hidden">
-            <div className="min-w-0">
-              <div className="text-[11px] text-slate-400">Realizado em {year}</div>
-              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.ytd)}</div>
-            </div>
-            <div className="min-w-0 text-right">
-              <div className="text-[11px] text-slate-400">Falta até Dez</div>
-              <div className="text-slate-100 font-semibold truncate">{loading ? "—" : formatBRL(totals.projAdd)}</div>
-            </div>
-          </div>
-          <div className="mt-1 text-sm text-slate-400 hidden sm:block">
+          <div className="mt-1 text-sm text-slate-400">
             {loading
               ? "Calculando..."
-              : `Em ${year}: ${formatBRL(totals.ytd)} realizado • Falta: ${formatBRL(totals.projAdd)} até Dez (${formatBRL(
-                  totals.projected
-                )} no total do plano)`}
+              : `Em ${year}: ${formatBRL(totals.ytd)} até agora • Projeção: ${formatBRL(totals.projected)} (${formatBRL(
+                  totals.projAdd
+                )} a mais)`}
           </div>
-          {!loading && totals.projAdd > 0 ? (
-            <div className="mt-2 sm:hidden">
-              <Badge variant="success">{formatBRL(totals.projAdd)} faltam se mantiver o plano</Badge>
-            </div>
-          ) : null}
         </button>
 
         <div className="shrink-0 flex items-center gap-2">
+          {/* Seletor de ano (mobile/web). */}
+          <label className="flex items-center gap-2 rounded-xl2 border border-white/10 bg-white/5 px-2.5 h-9">
+            <span className="hidden sm:inline text-xs text-slate-400">Ano</span>
+            <select
+              value={year}
+              onChange={(e) => onYearChange(Number(e.target.value))}
+              className="bg-transparent text-sm text-slate-100 outline-none"
+              aria-label="Selecionar ano"
+            >
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
+
+
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
@@ -259,7 +247,7 @@ function YearGoalsProjectionCard({
               <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-sm text-slate-400">Avanço no ano</div>
-                  <Badge variant="info">Base: Parcelas do objetivo</Badge>
+                  <Badge variant="info">Projeção até Dez</Badge>
                 </div>
                 <div className="mt-3 h-3 rounded-full bg-white/10 overflow-hidden flex">
                   {/* já realizado */}
@@ -267,15 +255,9 @@ function YearGoalsProjectionCard({
                   {/* projeção */}
                   <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, 100 - Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100))}%` }} />
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
-                    <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
-                    Realizado: <span className="font-semibold">{formatBRL(totals.ytd)}</span>
-                  </span>
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-200">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/70" />
-                    Falta até Dez: <span className="font-semibold">{formatBRL(totals.projAdd)}</span>
-                  </span>
+                <div className="mt-2 flex items-center justify-between text-sm">
+                  <div className="text-slate-300">{formatBRL(totals.ytd)} realizado</div>
+                  <div className="text-slate-300">{formatBRL(totals.projected)} projetado</div>
                 </div>
               </div>
 
@@ -284,31 +266,22 @@ function YearGoalsProjectionCard({
                 {top.map((g) => {
                   const target = Math.max(0, Number(g.target_value) || 0);
                   const ytd = Math.max(0, Number(g.ytd) || 0);
-                  const remaining = Math.max(0, Number(g.proj_add) || 0);
-                  const totalPlan = ytd + remaining;
+                  const proj = Math.max(ytd, Number(g.projected) || 0);
                   const ytdPct = target > 0 ? Math.min(100, (ytd / target) * 100) : 0;
-                  const projPct = target > 0 ? Math.min(100, (totalPlan / target) * 100) : 0;
+                  const projPct = target > 0 ? Math.min(100, (proj / target) * 100) : 0;
 
                   return (
                     <div key={g.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-slate-100 font-medium truncate">{g.name}</div>
-                          <div className="mt-2 grid grid-cols-2 gap-3 text-sm text-slate-300">
-                            <div className="min-w-0">
-                              <div className="text-[11px] text-slate-400">Agora</div>
-                              <div className="font-semibold truncate">{formatBRL(ytd)}</div>
-                            </div>
-                            <div className="min-w-0 text-right">
-                              <div className="text-[11px] text-slate-400">Falta até Dez</div>
-                              <div className="font-semibold truncate">{formatBRL(remaining)}</div>
-                            </div>
+                          <div className="mt-1 text-sm text-slate-400">
+                            {formatBRL(ytd)} agora • {formatBRL(proj)} até Dez • alvo {formatBRL(target)}
                           </div>
-                          <div className="mt-1 text-xs text-slate-500">Total do plano: {formatBRL(totalPlan)} • Alvo: {formatBRL(target)}</div>
                         </div>
                         <div className="shrink-0 text-right">
                           <div className="text-slate-100 font-semibold">{formatPercent(ytdPct)}</div>
-                          <div className="text-xs text-slate-400">Proj.: {formatPercent(projPct)}</div>
+                          <div className="text-xs text-slate-400">→ {formatPercent(projPct)}</div>
                         </div>
                       </div>
 
@@ -319,18 +292,20 @@ function YearGoalsProjectionCard({
                         </div>
                       </div>
 
-                      {remaining > 0 ? (
+                      {g.proj_add > 0 ? (
                         <div className="mt-2 text-xs text-slate-400">
-                          Mantendo o plano: {formatBRL(remaining)} até Dez
+                          Mantendo o plano: +{formatBRL(g.proj_add)} até o fim do ano
                         </div>
                       ) : (
-                        <div className="mt-2 text-xs text-slate-500">
-                          {ytd >= target && target > 0 ? "Meta concluída" : "Sem parcelas abertas até Dez"}
-                        </div>
+                        <div className="mt-2 text-xs text-slate-500">Sem projeção para o restante do ano (fora do plano mensal).</div>
                       )}
                     </div>
                   );
                 })}
+              </div>
+
+              <div className="text-xs text-slate-500">
+                Projeção baseada nos valores planejados do Plano do mês até Dezembro.
               </div>
             </div>
           ) : (
@@ -346,7 +321,8 @@ function YearGoalsProjectionCard({
 
 export default function DashboardPage() {
   const equity = useAsync(() => getEquitySummary(), []);
-  const yearGoals = useAsync(() => listYearGoalProjections(), []);
+  const [selectedYear, setSelectedYear] = React.useState(() => new Date().getFullYear());
+  const yearGoals = useAsync(() => listYearGoalProjections(selectedYear), [selectedYear]);
   const invs = useAsync(() => listInvestments(), []);
 
   const allocationsByClass = React.useMemo(() => {
@@ -464,7 +440,13 @@ export default function DashboardPage() {
       </div>
 
       {/* Nova entrega de alto valor: visão de avanço anual + projeção */}
-      <YearGoalsProjectionCard rows={yearGoals.data?.goals ?? []} loading={yearGoals.loading} />
+      <YearGoalsProjectionCard
+        year={selectedYear}
+        onYearChange={setSelectedYear}
+        totals={yearGoals.data?.totals ?? { year: selectedYear, ytd: 0, projected: 0, projAdd: 0 }}
+        rows={yearGoals.data?.goals ?? []}
+        loading={yearGoals.loading}
+      />
     </div>
   );
 }

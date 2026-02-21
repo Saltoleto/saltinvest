@@ -266,15 +266,15 @@ export default function GoalsPage() {
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
                 <div key={g.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="text-slate-100 font-medium break-words">{g.name}</div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-slate-100 font-medium">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-400">
                         {formatBRL(Number(ev?.current_contributed ?? 0))} de {formatBRL(Number(g.target_value ?? 0))} • alvo {formatDateBR(g.target_date)}
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 sm:justify-start">
+                    <div className="flex items-center gap-2">
                       <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>
                         {g.is_monthly_plan ? (
                           <span className="inline-flex items-center" title="No plano do mês" aria-label="No plano do mês">
@@ -285,11 +285,7 @@ export default function GoalsPage() {
                           "Fora do plano"
                         )}
                       </Badge>
-                      <Button
-                        variant="ghost"
-                        onClick={() => void onDelete(g.id)}
-                        className="h-9 px-3 text-red-200 hover:bg-red-400/10"
-                      >
+                      <Button variant="ghost" onClick={() => void onDelete(g.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
                         Excluir
                       </Button>
                     </div>

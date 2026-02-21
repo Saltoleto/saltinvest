@@ -47,7 +47,13 @@ function normalizeClassId(input: string | null | undefined): string {
   throw new Error("Classe é obrigatória.");
 }
 
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
 
+function monthStartISO(d = new Date()): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
+}
 
 export async function listInvestments(opts?: { goal_id?: string | null }): Promise<InvestmentRow[]> {
   const uid = await requireUserId();
@@ -184,9 +190,41 @@ export async function listAllocationsByInvestment(investmentId: string): Promise
   });
 }
 
-// NOTE: Allocation picking is no longer done client-side.
-// Allocations are now applied via the RPC fn_alocar_investimento_meta, which
-// distributes values across open submetas and records one allocation per submeta.
+async function pickSubmetaIdsForGoals(uid: string, goalIds: string[]): Promise<Record<string, string>> {
+  const month = monthStartISO();
+
+  // Prefer current month ABERTA, else earliest ABERTA.
+  const { data: current, error: e1 } = await supabase
+    .from("submetas")
+    .select("id, meta_id")
+    .eq("user_id", uid)
+    .in("meta_id", goalIds)
+    .eq("status", "ABERTA")
+    .eq("data_referencia", month);
+  if (e1) throw e1;
+
+  const byGoal: Record<string, string> = {};
+  for (const s of current ?? []) byGoal[String((s as any).meta_id)] = String((s as any).id);
+
+  const remaining = goalIds.filter((gid) => !byGoal[gid]);
+  if (!remaining.length) return byGoal;
+
+  const { data: earliest, error: e2 } = await supabase
+    .from("submetas")
+    .select("id, meta_id, data_referencia")
+    .eq("user_id", uid)
+    .in("meta_id", remaining)
+    .eq("status", "ABERTA")
+    .order("data_referencia", { ascending: true });
+  if (e2) throw e2;
+
+  for (const s of earliest ?? []) {
+    const gid = String((s as any).meta_id);
+    if (!byGoal[gid]) byGoal[gid] = String((s as any).id);
+  }
+
+  return byGoal;
+}
 
 export async function saveInvestmentWithAllocations(input: {
   id?: string;
@@ -223,26 +261,29 @@ export async function saveInvestmentWithAllocations(input: {
   const invId = String((saved as any).id);
 
   // Replace allocations for this investment.
-  // With the traceable allocation model (one row per affected submeta), we must
-  // properly estornar existing allocations before re-allocating.
-  const { error: eReset } = await supabase.rpc("fn_reset_investimento_alocacoes", {
-    p_investimento_id: invId
-  });
-  if (eReset) throw eReset;
+  const { error: eDel } = await supabase.from("alocacoes_investimento").delete().eq("user_id", uid).eq("investimento_id", invId);
+  if (eDel) throw eDel;
 
   const allocs = (input.allocations ?? []).filter((a) => Number(a.amount) > 0);
   if (allocs.length) {
-    // Allocate using an RPC that distributes the value across open submetas
-    // and writes one allocation row per affected submeta. This guarantees perfect estorno.
-    for (const a of allocs) {
-      const { error: eAlloc } = await supabase.rpc("fn_alocar_investimento_meta", {
-        p_investimento_id: invId,
-        p_meta_id: String(a.goal_id),
-        p_valor: Number(a.amount) || 0,
-        p_partir_de: null
-      });
-      if (eAlloc) throw eAlloc;
-    }
+    const goalIds = allocs.map((a) => String(a.goal_id));
+    const submetaByGoal = await pickSubmetaIdsForGoals(uid, goalIds);
+
+    const toInsert = allocs.map((a) => {
+      const submetaId = submetaByGoal[String(a.goal_id)];
+      if (!submetaId) {
+        throw new Error("Não foi possível encontrar uma parcela aberta para a meta selecionada. Verifique as submetas/parcelas.");
+      }
+      return {
+        user_id: uid,
+        investimento_id: invId,
+        submeta_id: submetaId,
+        valor_alocado: Number(a.amount) || 0
+      };
+    });
+
+    const { error: eIns } = await supabase.from("alocacoes_investimento").insert(toInsert);
+    if (eIns) throw eIns;
   }
 
   cacheInvalidate(`u:${uid}:investments:`);

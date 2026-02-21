@@ -124,15 +124,7 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
   }, [monthly.data]);
 
   const allocations = React.useMemo(() => {
-    // UX: don't allow allocating new money to goals already completed (>= 100%).
-    // When editing an investment, keep showing goals that already have allocation values,
-    // even if the goal later became completed, so the user can understand/review.
-    const rows = (goals.data ?? []).filter((g) => {
-      const pct = Number(g.percent_progress) || 0;
-      const currentAmount = toNumberBRL(alloc[g.goal_id] ?? "0");
-      return pct < 99.999 || currentAmount > 0;
-    });
-
+    const rows = goals.data ?? [];
     return rows.map((g) => ({
       goal_id: g.goal_id,
       name: g.name,
