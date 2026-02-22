@@ -9,6 +9,17 @@ import { useToast } from "@/ui/feedback/Toast";
 import { requireNonEmpty } from "@/lib/validate";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
+import ConfirmDialog, { type ConfirmTone } from "@/ui/primitives/ConfirmDialog";
+
+type ConfirmState = {
+  open: boolean;
+  title: string;
+  description?: React.ReactNode;
+  confirmLabel?: string;
+  tone?: ConfirmTone;
+  busy?: boolean;
+  action?: () => Promise<void>;
+};
 
 type FormState = { id?: string; name: string };
 
@@ -20,6 +31,8 @@ export default function ClassesPage() {
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState<FormState>({ name: "" });
   const [errs, setErrs] = React.useState<Record<string, string>>({});
+
+  const [confirm, setConfirm] = React.useState<ConfirmState>({ open: false, title: "" });
 
   function openNew() {
     setForm({ name: "" });
@@ -55,15 +68,31 @@ export default function ClassesPage() {
     }
   }
 
-  async function onDelete(id: string) {
-    if (!confirm("Excluir esta classe?")) return;
-    try {
-      await deleteClass(id);
-      toast.push({ title: "Classe excluída", tone: "success" });
-      classes.reload();
-    } catch (err: any) {
-      toast.push({ title: "Erro ao excluir", message: err?.message ?? "Erro", tone: "danger" });
-    }
+  async function onDelete(id: string, name: string) {
+    setConfirm({
+      open: true,
+      title: "Excluir classe",
+      description: (
+        <>
+          <div className="text-slate-800">Excluir <span className="font-semibold">{name}</span>?</div>
+          <div className="mt-1 text-sm text-slate-600">Investimentos existentes podem perder a classificação.</div>
+        </>
+      ),
+      tone: "danger",
+      confirmLabel: "Excluir",
+      action: async () => {
+        try {
+          setConfirm((c) => ({ ...c, busy: true }));
+          await deleteClass(id);
+          toast.push({ title: "Classe excluída", tone: "success" });
+          classes.reload();
+        } catch (err: any) {
+          toast.push({ title: "Erro ao excluir", message: err?.message ?? "Erro", tone: "danger" });
+        } finally {
+          setConfirm({ open: false, title: "" });
+        }
+      }
+    });
   }
 
   const rows = classes.data ?? [];
@@ -72,8 +101,8 @@ export default function ClassesPage() {
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4 flex items-center justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold">Ações</div>
-          <div className="text-sm text-slate-400">Organize sua carteira por tipo de ativo.</div>
+          <div className="text-slate-900 font-semibold">Classes</div>
+          <div className="text-sm text-slate-600">Organize sua carteira por tipo de ativo.</div>
         </div>
         <Button
           onClick={openNew}
@@ -90,7 +119,7 @@ export default function ClassesPage() {
         {classes.loading ? (
           <div className="grid gap-2">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+              <div key={i} className="rounded-xl2 border border-slate-200 bg-white p-4 flex items-center justify-between gap-3">
                 <Skeleton className="h-4 w-40" />
                 <div className="flex gap-2">
                   <Skeleton className="h-9 w-20" />
@@ -102,15 +131,15 @@ export default function ClassesPage() {
         ) : rows.length ? (
           <div className="grid gap-2">
             {rows.map((c) => (
-              <div key={c.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4 flex items-center justify-between gap-3">
+              <div key={c.id} className="rounded-xl2 border border-slate-200 bg-white p-4 flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-slate-100 font-medium">{c.name}</div>
+                  <div className="text-slate-900 font-medium">{c.name}</div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="secondary" onClick={() => openEdit(c)} className="h-9 px-3">
                     Editar
                   </Button>
-                  <Button variant="ghost" onClick={() => void onDelete(c.id)} className="h-9 px-3 text-red-200 hover:bg-red-400/10">
+                  <Button variant="ghost" onClick={() => void onDelete(c.id, c.name)} className="h-9 px-3 text-rose-700 hover:bg-rose-50">
                     Excluir
                   </Button>
                 </div>
@@ -118,9 +147,9 @@ export default function ClassesPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-            <div className="text-slate-100 font-medium">Nenhuma classe ainda</div>
-            <div className="mt-1 text-sm text-slate-400">Crie classes para melhorar análises e alvos.</div>
+          <div className="rounded-xl2 border border-slate-200 bg-white p-6 text-center">
+            <div className="text-slate-900 font-medium">Nenhuma classe ainda</div>
+            <div className="mt-1 text-sm text-slate-600">Crie classes para melhorar análises e alvos.</div>
           </div>
         )}
       </Card>
@@ -145,6 +174,20 @@ export default function ClassesPage() {
           <div className="text-xs text-slate-500">O percentual alvo é definido na tela “Alvos”.</div>
         </div>
       </Modal>
-    </div>
+    
+
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        description={confirm.description}
+        confirmLabel={confirm.confirmLabel}
+        tone={confirm.tone}
+        busy={confirm.busy}
+        onCancel={() => setConfirm({ open: false, title: "" })}
+        onConfirm={async () => {
+          await confirm.action?.();
+        }}
+      />
+</div>
   );
 }

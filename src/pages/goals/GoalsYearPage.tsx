@@ -48,8 +48,8 @@ export default function GoalsYearPage() {
     <div className="grid gap-4 lg:gap-6">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-slate-100 font-semibold text-lg">Metas no ano</div>
-          <div className="text-sm text-slate-400">Evolução mês a mês + projeção até Dezembro</div>
+          <div className="text-slate-900 font-semibold text-lg">Metas no ano</div>
+          <div className="text-sm text-slate-600">Evolução mês a mês + projeção até Dezembro</div>
         </div>
         <div className="flex items-end gap-2">
           <Select label="Ano" value={year} onChange={(e) => setYear(e.target.value)} className="min-w-[140px]">
@@ -68,8 +68,8 @@ export default function GoalsYearPage() {
       <Card className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-slate-100 font-semibold">Resumo {y}</div>
-            <div className="mt-1 text-sm text-slate-400">
+            <div className="text-slate-900 font-semibold">Resumo {y}</div>
+            <div className="mt-1 text-sm text-slate-600">
               Realizado no ano até agora + projeção caso o plano mensal seja seguido.
             </div>
           </div>
@@ -85,22 +85,22 @@ export default function GoalsYearPage() {
         ) : (
           <>
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                <div className="text-sm text-slate-400">Realizado</div>
-                <div className="mt-2 text-xl text-slate-100 font-semibold">{formatBRL(totals.ytd)}</div>
+              <div className="rounded-xl2 border border-slate-200 bg-white p-4">
+                <div className="text-sm text-slate-600">Realizado</div>
+                <div className="mt-2 text-xl text-slate-900 font-semibold">{formatBRL(totals.ytd)}</div>
               </div>
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                <div className="text-sm text-slate-400">Previsto (até Dez)</div>
-                <div className="mt-2 text-xl text-slate-100 font-semibold">{formatBRL(totals.projected)}</div>
+              <div className="rounded-xl2 border border-slate-200 bg-white p-4">
+                <div className="text-sm text-slate-600">Previsto (até Dez)</div>
+                <div className="mt-2 text-xl text-slate-900 font-semibold">{formatBRL(totals.projected)}</div>
               </div>
-              <div className="rounded-xl2 border border-white/10 bg-white/5 p-4">
-                <div className="text-sm text-slate-400">A mais (plano)</div>
-                <div className="mt-2 text-xl text-slate-100 font-semibold">+ {formatBRL(totals.add)}</div>
+              <div className="rounded-xl2 border border-slate-200 bg-white p-4">
+                <div className="text-sm text-slate-600">A mais (plano)</div>
+                <div className="mt-2 text-xl text-slate-900 font-semibold">+ {formatBRL(totals.add)}</div>
               </div>
             </div>
 
             <div className="mt-4">
-              <div className="h-3 rounded-full bg-white/10 overflow-hidden flex">
+              <div className="h-3 rounded-full bg-slate-100 overflow-hidden flex">
                 <div className="bg-sky-400" style={{ width: `${Math.min(100, (totals.ytd / Math.max(1, totals.projected)) * 100)}%` }} />
                 <div
                   className="bg-emerald-400/70"
@@ -116,8 +116,8 @@ export default function GoalsYearPage() {
       <Card className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-slate-100 font-semibold">Linha do tempo</div>
-            <div className="mt-1 text-sm text-slate-400">Clique no mês para ver detalhes por meta.</div>
+            <div className="text-slate-900 font-semibold">Linha do tempo</div>
+            <div className="mt-1 text-sm text-slate-600">Clique no mês para ver detalhes por meta.</div>
           </div>
           <div className="text-xs text-slate-500">Escala: {formatBRL(maxScale)}</div>
         </div>
@@ -137,7 +137,7 @@ export default function GoalsYearPage() {
               const delta = Math.max(0, (m.projected_cum || 0) - (m.contributed_cum || 0));
 
               return (
-                <div key={m.month} className="rounded-xl2 border border-white/10 bg-white/5 overflow-hidden">
+                <div key={m.month} className="rounded-xl2 border border-slate-200 bg-white overflow-hidden">
                   <button
                     type="button"
                     onClick={() => setMonthOpen((s) => ({ ...s, [m.month]: !open }))}
@@ -146,21 +146,21 @@ export default function GoalsYearPage() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-slate-100 font-medium flex items-center gap-2">
+                        <div className="text-slate-900 font-medium flex items-center gap-2">
                           <span className="shrink-0">{monthLabel(m.month)}</span>
                           {m.planned > 0 ? <Badge variant="info">Plano {formatBRL(m.planned)}</Badge> : <Badge variant="neutral">Sem plano</Badge>}
                         </div>
-                        <div className="mt-1 text-sm text-slate-400">
+                        <div className="mt-1 text-sm text-slate-600">
                           Acumulado: {formatBRL(m.contributed_cum)} • Projeção: {formatBRL(m.projected_cum)}
                           {delta > 0 ? ` • +${formatBRL(delta)}` : ""}
                         </div>
                       </div>
-                      <div className="shrink-0 text-slate-300">
+                      <div className="shrink-0 text-slate-700">
                         {open ? <Icon name="chevronUp" className="h-5 w-5" /> : <Icon name="chevronDown" className="h-5 w-5" />}
                       </div>
                     </div>
 
-                    <div className="mt-3 h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
                       <div className="h-full flex">
                         <div className="bg-sky-400" style={{ width: `${pctActual}%` }} />
                         <div className="bg-emerald-400/70" style={{ width: `${Math.max(0, pctProj - pctActual)}%` }} />
@@ -169,25 +169,25 @@ export default function GoalsYearPage() {
                   </button>
 
                   {open ? (
-                    <div className="border-t border-white/10 p-4">
+                    <div className="border-t border-slate-200 p-4">
                       {m.details.length ? (
                         <div className="grid gap-2">
                           {m.details.map((d) => {
                             const total = (d.contributed || 0) + (d.planned || 0);
                             return (
-                              <div key={d.goal_id} className="rounded-xl2 border border-white/10 bg-white/5 p-3">
+                              <div key={d.goal_id} className="rounded-xl2 border border-slate-200 bg-white p-3">
                                 <div className="flex items-start justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="text-slate-100 font-medium truncate">{d.name}</div>
-                                    <div className="mt-1 text-xs text-slate-400">
+                                    <div className="text-slate-900 font-medium truncate">{d.name}</div>
+                                    <div className="mt-1 text-xs text-slate-600">
                                       {d.contributed ? `Aportado: ${formatBRL(d.contributed)}` : "Aportado: —"}
                                       {d.planned ? ` • Planejado: ${formatBRL(d.planned)}` : ""}
                                     </div>
                                   </div>
                                   <div className="shrink-0 text-right">
-                                    <div className="text-slate-100 font-semibold">{formatBRL(total)}</div>
+                                    <div className="text-slate-900 font-semibold">{formatBRL(total)}</div>
                                     {d.target_value > 0 ? (
-                                      <div className="text-xs text-slate-400">{formatPercent(Math.min(100, (total / d.target_value) * 100))} do alvo</div>
+                                      <div className="text-xs text-slate-600">{formatPercent(Math.min(100, (total / d.target_value) * 100))} do alvo</div>
                                     ) : null}
                                   </div>
                                 </div>
@@ -196,7 +196,7 @@ export default function GoalsYearPage() {
                           })}
                         </div>
                       ) : (
-                        <div className="text-sm text-slate-400">Sem movimentação neste mês.</div>
+                        <div className="text-sm text-slate-600">Sem movimentação neste mês.</div>
                       )}
                     </div>
                   ) : null}
@@ -205,9 +205,9 @@ export default function GoalsYearPage() {
             })}
           </div>
         ) : (
-          <div className="mt-4 rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-            <div className="text-slate-100 font-medium">Sem dados para {y}</div>
-            <div className="mt-1 text-sm text-slate-400">Cadastre metas e registre aportes / plano mensal para ver a evolução.</div>
+          <div className="mt-4 rounded-xl2 border border-slate-200 bg-white p-6 text-center">
+            <div className="text-slate-900 font-medium">Sem dados para {y}</div>
+            <div className="mt-1 text-sm text-slate-600">Cadastre metas e registre aportes / plano mensal para ver a evolução.</div>
             <div className="mt-3">
               <Link to="/app/goals">
                 <Button variant="secondary">Ir para Metas</Button>

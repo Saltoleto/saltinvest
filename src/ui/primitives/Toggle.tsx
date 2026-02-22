@@ -15,9 +15,10 @@ export default function Toggle({
   return (
     <div className="flex items-start justify-between gap-4">
       <div>
-        <div className="text-sm text-slate-200">{label}</div>
-        {hint ? <div className="mt-1 text-xs text-slate-400">{hint}</div> : null}
+        <div className="text-sm text-slate-800">{label}</div>
+        {hint ? <div className="mt-1 text-xs text-slate-600">{hint}</div> : null}
       </div>
+
       <button
         type="button"
         role="switch"
@@ -25,13 +26,13 @@ export default function Toggle({
         onClick={() => onChange(!checked)}
         className={cn(
           "h-7 w-12 rounded-full border transition flex items-center px-1",
-          checked ? "bg-emerald-400/25 border-emerald-400/35" : "bg-white/8 border-white/10"
+          checked ? "bg-emerald-50 border-emerald-200" : "bg-slate-100 border-slate-200"
         )}
       >
         <span
           className={cn(
-            "h-5 w-5 rounded-full transition",
-            checked ? "translate-x-5 bg-gradient-to-br from-emerald-500 to-sky-400" : "translate-x-0 bg-white/40"
+            "h-5 w-5 rounded-full transition shadow",
+            checked ? "translate-x-5 bg-gradient-to-br from-emerald-500 to-sky-500" : "translate-x-0 bg-white"
           )}
         />
       </button>

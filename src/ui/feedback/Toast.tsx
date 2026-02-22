@@ -25,23 +25,24 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
+
       <div className="fixed bottom-4 left-4 right-4 z-50 flex flex-col gap-2 sm:left-auto sm:right-4 sm:w-[360px]">
         {items.map((t) => (
           <div
             key={t.id}
             className={cn(
-              "rounded-xl2 border bg-slate-900/80 backdrop-blur-md p-4 shadow-soft",
+              "rounded-xl2 border bg-white p-4 shadow-soft",
               t.tone === "success"
-                ? "border-emerald-400/25"
+                ? "border-emerald-200"
                 : t.tone === "warning"
-                  ? "border-amber-400/25"
+                  ? "border-amber-200"
                   : t.tone === "danger"
-                    ? "border-red-400/25"
-                    : "border-white/10"
+                    ? "border-rose-200"
+                    : "border-slate-200"
             )}
           >
-            <div className="font-medium text-slate-100">{t.title}</div>
-            {t.message ? <div className="mt-1 text-sm text-slate-300">{t.message}</div> : null}
+            <div className="font-medium text-slate-900">{t.title}</div>
+            {t.message ? <div className="mt-1 text-sm text-slate-700">{t.message}</div> : null}
           </div>
         ))}
       </div>

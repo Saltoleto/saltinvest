@@ -2,10 +2,22 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../utils/cn";
 
-type Props = React.SelectHTMLAttributes<HTMLSelectElement> & {
+// NOTE:
+// This is a custom select that renders a <button> + popover, not a native <select>.
+// We keep the *behavior* of a select (value/defaultValue/onChange signature)
+// but we must type the trigger element as a button to avoid spreading
+// SelectHTMLAttributes (e.g. onCopy typed for HTMLSelectElement) into a <button>.
+
+type Props = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "value" | "defaultValue" | "onChange" | "children"> & {
   label?: string;
   hint?: string;
   error?: string;
+  value?: string;
+  defaultValue?: string;
+  onChange?: React.ChangeEventHandler<HTMLSelectElement>;
+  children?: React.ReactNode;
+  name?: string;
+  required?: boolean;
 };
 
 type Opt = { value: string; label: string; disabled?: boolean };
@@ -173,13 +185,10 @@ export default function Select({
           <div
             ref={popRef}
             style={{ left: pos.left, top: pos.top + 8, width: pos.width, position: "fixed" }}
-            className={cn(
-              "z-[9999] rounded-2xl border border-white/10",
-              "bg-slate-950/95 backdrop-blur-xl shadow-2xl overflow-hidden"
-            )}
+            className={cn("z-[9999] rounded-2xl border border-slate-200 bg-white shadow-soft overflow-hidden")}
             role="listbox"
           >
-            <div className="p-2 border-b border-white/10">
+            <div className="p-2 border-b border-slate-200">
               <input
                 ref={searchRef}
                 value={q}
@@ -188,13 +197,13 @@ export default function Select({
                   setActive(0);
                 }}
                 placeholder="Buscar..."
-                className="w-full h-10 rounded-xl bg-white/5 border border-white/10 px-3 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400/30"
+                className="w-full h-10 rounded-xl bg-white border border-slate-200 px-3 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400/35 focus:border-blue-500/40"
               />
             </div>
 
             <div className="max-h-64 overflow-auto p-1">
               {filtered.length === 0 ? (
-                <div className="px-3 py-3 text-sm text-slate-400">Nenhum resultado.</div>
+                <div className="px-3 py-3 text-sm text-slate-600">Nenhum resultado.</div>
               ) : (
                 filtered.map((opt, idx) => {
                   const isSel = opt.value === current;
@@ -208,15 +217,15 @@ export default function Select({
                       disabled={opt.disabled}
                       className={cn(
                         "w-full text-left px-3 py-2.5 rounded-xl flex items-center justify-between gap-3",
-                        opt.disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-white/7",
-                        isAct ? "bg-white/7" : "",
-                        isSel ? "border border-sky-400/20" : "border border-transparent"
+                        opt.disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-slate-50",
+                        isAct ? "bg-slate-50" : "",
+                        isSel ? "border border-blue-200" : "border border-transparent"
                       )}
                       onMouseEnter={() => setActive(idx)}
                       onClick={() => pick(opt)}
                     >
-                      <span className="truncate text-slate-100">{opt.label}</span>
-                      {isSel ? <span className="text-sky-300">✓</span> : <span className="text-transparent">✓</span>}
+                      <span className="truncate text-slate-900">{opt.label}</span>
+                      {isSel ? <span className="text-blue-600">✓</span> : <span className="text-transparent">✓</span>}
                     </button>
                   );
                 })
@@ -229,7 +238,7 @@ export default function Select({
 
   return (
     <label className={cn("block", className)}>
-      {label ? <div className="text-sm text-slate-200 mb-2">{label}</div> : null}
+      {label ? <div className="text-sm text-slate-700 mb-2">{label}</div> : null}
 
       {/* Hidden input to keep native forms happy */}
       {name ? <input type="hidden" name={name} value={current} required={required} /> : null}
@@ -243,22 +252,22 @@ export default function Select({
           aria-haspopup="listbox"
           aria-expanded={open}
           className={cn(
-            "w-full h-11 rounded-xl2 bg-white/5 border border-white/10 px-3 text-left text-slate-100",
-            "focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/30 transition",
+            "w-full h-11 rounded-xl2 bg-white border border-slate-200 px-3 text-left text-slate-900",
+            "focus:outline-none focus:ring-2 focus:ring-blue-400/35 focus:border-blue-500/40 transition",
             "flex items-center justify-between gap-3",
-            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-white/7",
-            error ? "border-red-400/40 focus:ring-red-400/30" : ""
+            disabled ? "opacity-60 cursor-not-allowed" : "hover:bg-slate-50",
+            error ? "border-rose-300 focus:ring-rose-400/25 focus:border-rose-400/40" : ""
           )}
           onClick={() => !disabled && setOpen((v) => !v)}
         >
-          <span className={cn("truncate", !selected?.label ? "text-slate-400" : "")}>{selected?.label || "Selecionar"}</span>
-          <span className={cn("text-slate-300 transition", open ? "rotate-180" : "")}>▾</span>
+          <span className={cn("truncate", !selected?.label ? "text-slate-500" : "")}>{selected?.label || "Selecionar"}</span>
+          <span className={cn("text-slate-500 transition", open ? "rotate-180" : "")}>▾</span>
         </button>
 
         {popover}
       </div>
 
-      {error ? <div className="mt-2 text-sm text-red-300">{error}</div> : hint ? <div className="mt-2 text-sm text-slate-400">{hint}</div> : null}
+      {error ? <div className="mt-2 text-sm text-rose-700">{error}</div> : hint ? <div className="mt-2 text-sm text-slate-600">{hint}</div> : null}
     </label>
   );
 }

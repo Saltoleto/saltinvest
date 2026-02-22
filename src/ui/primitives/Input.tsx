@@ -13,15 +13,10 @@ type Props = React.InputHTMLAttributes<HTMLInputElement> & {
   allowReveal?: boolean;
 };
 
-export default function Input({
-  label,
-  hint,
-  error,
-  className,
-  allowReveal,
-  type,
-  ...props
-}: Props) {
+const Input = React.forwardRef<HTMLInputElement, Props>(function Input(
+  { label, hint, error, className, allowReveal, type, ...props },
+  ref
+) {
   const isPassword = type === "password";
   const [reveal, setReveal] = React.useState(false);
 
@@ -30,16 +25,18 @@ export default function Input({
 
   return (
     <label className={cn("block", className)}>
-      {label ? <div className="text-sm text-slate-200 mb-2">{label}</div> : null}
+      {label ? <div className="text-sm text-slate-700 mb-2">{label}</div> : null}
 
-      <div className={cn("relative", showReveal ? "" : "")}> 
+      <div className="relative">
         <input
           {...props}
+          ref={ref}
           type={finalType}
           className={cn(
-            "w-full h-11 rounded-xl2 bg-white/5 border border-white/10 px-3 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400/40 focus:border-sky-400/30 transition",
+            "w-full h-11 rounded-xl2 bg-white border border-slate-200 px-3 text-slate-900",
+            "placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-400/35 focus:border-blue-500/40 transition",
             showReveal ? "pr-11" : "",
-            error ? "border-red-400/40 focus:ring-red-400/30" : ""
+            error ? "border-rose-300 focus:ring-rose-400/25 focus:border-rose-400/40" : ""
           )}
         />
 
@@ -47,7 +44,7 @@ export default function Input({
           <button
             type="button"
             onClick={() => setReveal((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-slate-300 hover:text-white hover:bg-white/5 transition"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition"
             aria-label={reveal ? "Ocultar senha" : "Mostrar senha"}
             tabIndex={0}
           >
@@ -57,10 +54,12 @@ export default function Input({
       </div>
 
       {error ? (
-        <div className="mt-2 text-sm text-red-300">{error}</div>
+        <div className="mt-2 text-sm text-rose-700">{error}</div>
       ) : hint ? (
-        <div className="mt-2 text-sm text-slate-400">{hint}</div>
+        <div className="mt-2 text-sm text-slate-600">{hint}</div>
       ) : null}
     </label>
   );
-}
+});
+
+export default Input;

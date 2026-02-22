@@ -1,3 +1,34 @@
+# SaltInvest Premium (Baseado no projeto anexado)
+
+Aplicação PWA para **gestão centralizada de investimentos** com UX profissional (tema claro, Material-like), cards, badges, modais e feedback via toasts.
+
+## Requisitos
+- Node.js 18+
+- Conta e projeto no Supabase
+
+## Setup
+1) Copie o arquivo `.env.example` para `.env` e preencha:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+2) Instale e rode:
+```bash
+npm install
+npm run dev
+```
+
+## Banco de dados
+Os scripts SQL de referência (modelo, views, policies e seeds) estão em `./supabase/schema.sql` (e `schema-performance.sql`).
+
+> Dica: execute no Supabase SQL Editor na ordem do arquivo.
+
+## Rotas
+- Rotas públicas: `/login`, `/signup`, `/reset`, `/app/reset-password`
+- Área protegida: `/app/*`
+
+---
+
+
 # SaltInvest (React + Supabase + PWA)
 
 Aplicação PWA para **gestão de investimentos centralizada**, com experiência premium no **web** e **mobile**.
@@ -40,8 +71,8 @@ npm run preview
 - Todas as rotas em `/app/*` são protegidas por sessão via `ProtectedRoute`.
 - Se não houver sessão, o usuário é redirecionado para `/login`.
 
-## UX premium
-- Layout responsivo com AppShell (sidebar no desktop + bottom nav no mobile)
+## UX profissional
+- Layout responsivo (Material light) com AppShell (sidebar no desktop + bottom nav no mobile)
 - Dashboard com estatísticas, gráficos, progresso de metas e exposição FGC
 - Planejamento mensal com **Total sugerido** baseado nas metas `is_monthly_plan = true`
 

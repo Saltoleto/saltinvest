@@ -73,7 +73,10 @@ export async function listInvestments(opts?: { goal_id?: string | null }): Promi
         .eq("user_id", uid)
         .in("submeta_id", subIds);
       if (eA) throw eA;
-      const ids = Array.from(new Set((allocs ?? []).map((a: any) => String(a.investimento_id)))).filter(Boolean);
+      // Ensure the inferred type is string[] (avoids TS inferring unknown[] in some environments)
+      const ids: string[] = Array.from(
+        new Set<string>((allocs ?? []).map((a: any) => String(a.investimento_id)))
+      ).filter((v): v is string => Boolean(v));
       if (!ids.length) return [];
       restrictIds = ids;
     }

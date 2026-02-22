@@ -134,10 +134,10 @@ export default function PwaPrompts() {
           </>
         }
       >
-        <div className="text-slate-200">
+        <div className="text-slate-800">
           Uma nova versão do <span className="font-semibold">SaltInvest</span> está pronta.
         </div>
-        <div className="mt-2 text-sm text-slate-300">
+        <div className="mt-2 text-sm text-slate-700">
           Para garantir segurança e a melhor experiência, atualize para aplicar as melhorias.
         </div>
       </Modal>
@@ -145,10 +145,10 @@ export default function PwaPrompts() {
       {/* If user closed the modal but needRefresh is still true, keep a small banner */}
       {needRefresh && hideUpdateModal ? (
         <div className="fixed bottom-4 left-4 right-4 z-[9998] sm:left-auto sm:right-4 sm:w-[420px]">
-          <div className="rounded-xl2 border border-amber-400/25 bg-slate-950/85 backdrop-blur-md shadow-soft p-4 flex items-start gap-3">
+          <div className="rounded-xl2 border border-amber-200 bg-amber-50 backdrop-blur-md shadow-soft p-4 flex items-start gap-3">
             <div className="flex-1">
-              <div className="text-slate-100 font-medium">Nova versão disponível</div>
-              <div className="text-sm text-slate-300 mt-0.5">Atualize para aplicar as mudanças.</div>
+              <div className="text-slate-900 font-medium">Nova versão disponível</div>
+              <div className="text-sm text-slate-700 mt-0.5">Atualize para aplicar as mudanças.</div>
             </div>
             <Button onClick={() => updateServiceWorker(true)} className="h-9 px-4">
               Atualizar
@@ -162,13 +162,13 @@ export default function PwaPrompts() {
         <div className="fixed bottom-4 left-4 right-4 z-[9997] sm:left-auto sm:right-4 sm:w-[420px]">
           <div
             className={cn(
-              "rounded-xl2 border bg-slate-950/80 backdrop-blur-md shadow-soft p-4 flex items-start gap-3",
-              "border-white/10"
+              "rounded-xl2 border bg-white backdrop-blur-md shadow-soft p-4 flex items-start gap-3",
+              "border-slate-200"
             )}
           >
             <div className="flex-1">
-              <div className="text-slate-100 font-medium">Instale o SaltInvest</div>
-              <div className="text-sm text-slate-300 mt-0.5">
+              <div className="text-slate-900 font-medium">Instale o SaltInvest</div>
+              <div className="text-sm text-slate-700 mt-0.5">
                 Tenha acesso rápido e uma experiência mais fluida, como um app.
               </div>
             </div>
@@ -212,27 +212,27 @@ export default function PwaPrompts() {
       >
         {isSafariOnIOS() ? (
           <>
-            <div className="text-slate-200">
+            <div className="text-slate-800">
               No Safari, toque no botão de <span className="font-semibold">Compartilhar</span> e depois em{" "}
               <span className="font-semibold">“Adicionar à Tela de Início”</span>.
             </div>
-            <div className="mt-2 text-sm text-slate-300">
+            <div className="mt-2 text-sm text-slate-700">
               Após instalar, o SaltInvest abre em tela cheia e funciona melhor como PWA.
             </div>
           </>
         ) : (
           <>
-            <div className="text-slate-200">
+            <div className="text-slate-800">
               Se o botão <span className="font-semibold">Instalar</span> não apareceu automaticamente, você ainda pode
               instalar pelo menu do navegador.
             </div>
-            <ul className="mt-3 space-y-2 text-sm text-slate-300 list-disc pl-5">
+            <ul className="mt-3 space-y-2 text-sm text-slate-700 list-disc pl-5">
               <li>
-                <span className="font-medium text-slate-200">Chrome/Edge (Desktop):</span> clique no ícone de instalação
+                <span className="font-medium text-slate-800">Chrome/Edge (Desktop):</span> clique no ícone de instalação
                 na barra de endereço ou no menu ⋮ → <span className="font-semibold">Instalar app</span>.
               </li>
               <li>
-                <span className="font-medium text-slate-200">Chrome (Android):</span> menu ⋮ →{" "}
+                <span className="font-medium text-slate-800">Chrome (Android):</span> menu ⋮ →{" "}
                 <span className="font-semibold">Instalar app</span> / <span className="font-semibold">Adicionar à tela inicial</span>.
               </li>
             </ul>

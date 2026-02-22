@@ -16,6 +16,17 @@ import { maskBRLCurrencyInput } from "@/lib/masks";
 import { useToast } from "@/ui/feedback/Toast";
 import { Icon } from "@/ui/layout/icons";
 import Skeleton from "@/ui/primitives/Skeleton";
+import ConfirmDialog, { type ConfirmTone } from "@/ui/primitives/ConfirmDialog";
+
+type ConfirmState = {
+  open: boolean;
+  title: string;
+  description?: React.ReactNode;
+  confirmLabel?: string;
+  tone?: ConfirmTone;
+  busy?: boolean;
+  action?: () => Promise<void>;
+};
 
 type FormState = {
   name: string;
@@ -43,6 +54,8 @@ export default function GoalsPage() {
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState<FormState>({ name: "", target_value: "", start_date: "", target_date: "", is_monthly_plan: true });
   const [errs, setErrs] = React.useState<Record<string, string>>({});
+
+  const [confirm, setConfirm] = React.useState<ConfirmState>({ open: false, title: "" });
 
   function pad2(n: number) {
     return String(n).padStart(2, "0");
@@ -118,16 +131,32 @@ export default function GoalsPage() {
     }
   }
 
-  async function onDelete(id: string) {
-    if (!confirm("Excluir esta meta? Isso remove vínculos de alocação relacionados.")) return;
-    try {
-      await deleteGoal(id);
-      toast.push({ title: "Meta excluída", tone: "success" });
-      goals.reload();
-      evol.reload();
-    } catch (err: any) {
-      toast.push({ title: "Erro ao excluir", message: err?.message ?? "Erro", tone: "danger" });
-    }
+  async function onDelete(id: string, name: string) {
+    setConfirm({
+      open: true,
+      title: "Excluir meta",
+      description: (
+        <>
+          <div className="text-slate-800">Excluir <span className="font-semibold">{name}</span>?</div>
+          <div className="mt-1 text-sm text-slate-600">Isso remove vínculos de alocação relacionados.</div>
+        </>
+      ),
+      tone: "danger",
+      confirmLabel: "Excluir",
+      action: async () => {
+        try {
+          setConfirm((c) => ({ ...c, busy: true }));
+          await deleteGoal(id);
+          toast.push({ title: "Meta excluída", tone: "success" });
+          goals.reload();
+          evol.reload();
+        } catch (err: any) {
+          toast.push({ title: "Erro ao excluir", message: err?.message ?? "Erro", tone: "danger" });
+        } finally {
+          setConfirm({ open: false, title: "" });
+        }
+      }
+    });
   }
 
   const rows = goals.data ?? [];
@@ -195,13 +224,13 @@ export default function GoalsPage() {
             className="min-w-0 text-left"
             aria-label={filtersCollapsed ? "Expandir filtros" : "Recolher filtros"}
           >
-            <div className="text-slate-100 font-semibold">Filtros</div>
-            <div className="text-sm text-slate-400">{filtered.length} meta(s)</div>
+            <div className="text-slate-900 font-semibold">Filtros</div>
+            <div className="text-sm text-slate-600">{filtered.length} meta(s)</div>
           </button>
           <button
             type="button"
             onClick={() => setFiltersCollapsed((v) => !v)}
-            className="shrink-0 rounded-xl2 border border-white/10 bg-white/5 p-2 text-sky-200 hover:bg-white/10 transition"
+            className="shrink-0 rounded-xl2 border border-slate-200 bg-white p-2 text-blue-600 hover:bg-slate-100 transition"
             aria-label={filtersCollapsed ? "Expandir" : "Recolher"}
           >
             {filtersCollapsed ? <Icon name="chevronDown" className="h-5 w-5" /> : <Icon name="chevronUp" className="h-5 w-5" />}
@@ -246,7 +275,7 @@ export default function GoalsPage() {
         {goals.loading ? (
           <div className="grid gap-3">
             {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+              <div key={i} className="rounded-xl2 border border-slate-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <Skeleton className="h-4 w-36" />
@@ -265,11 +294,11 @@ export default function GoalsPage() {
               const ev = byId.get(g.id);
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
-                <div key={g.id} className="rounded-xl2 border border-white/10 bg-white/5 p-4">
+                <div key={g.id} className="rounded-xl2 border border-slate-200 bg-white p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
-                      <div className="text-slate-100 font-medium break-words">{g.name}</div>
-                      <div className="mt-1 text-sm text-slate-400">
+                      <div className="text-slate-900 font-medium break-words">{g.name}</div>
+                      <div className="mt-1 text-sm text-slate-600">
                         {formatBRL(Number(ev?.current_contributed ?? 0))} de {formatBRL(Number(g.target_value ?? 0))} • alvo {formatDateBR(g.target_date)}
                       </div>
                     </div>
@@ -287,8 +316,8 @@ export default function GoalsPage() {
                       </Badge>
                       <Button
                         variant="ghost"
-                        onClick={() => void onDelete(g.id)}
-                        className="h-9 px-3 text-red-200 hover:bg-red-400/10"
+                        onClick={() => void onDelete(g.id, g.name)}
+                        className="h-9 px-3 text-rose-700 hover:bg-rose-50"
                       >
                         Excluir
                       </Button>
@@ -297,16 +326,16 @@ export default function GoalsPage() {
 
                   <div className="mt-3">
                     <Progress value={pct} />
-                    <div className="mt-2 text-xs text-slate-400">{pct.toFixed(1)}%</div>
+                    <div className="mt-2 text-xs text-slate-600">{pct.toFixed(1)}%</div>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          <div className="rounded-xl2 border border-white/10 bg-white/5 p-6 text-center">
-            <div className="text-slate-100 font-medium">Nenhuma meta ainda</div>
-            <div className="mt-1 text-sm text-slate-400">Crie sua primeira meta para ver o plano mensal.</div>
+          <div className="rounded-xl2 border border-slate-200 bg-white p-6 text-center">
+            <div className="text-slate-900 font-medium">Nenhuma meta ainda</div>
+            <div className="mt-1 text-sm text-slate-600">Crie sua primeira meta para ver o plano mensal.</div>
           </div>
         )}
       </Card>
@@ -372,6 +401,20 @@ export default function GoalsPage() {
           </div>
         </div>
       </Modal>
-    </div>
+    
+
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        description={confirm.description}
+        confirmLabel={confirm.confirmLabel}
+        tone={confirm.tone}
+        busy={confirm.busy}
+        onCancel={() => setConfirm({ open: false, title: "" })}
+        onConfirm={async () => {
+          await confirm.action?.();
+        }}
+      />
+</div>
   );
 }

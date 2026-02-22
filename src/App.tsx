@@ -51,9 +51,23 @@ export default function App() {
     };
     document.addEventListener("copy", onCopy);
     document.addEventListener("cut", onCut);
+    const onContextMenu = (e: MouseEvent) => {
+      if (isEditable(e.target)) return;
+      e.preventDefault();
+    };
+    const onSelectStart = (e: Event) => {
+      if (isEditable(e.target)) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", onContextMenu);
+    document.addEventListener("selectstart", onSelectStart);
+
     return () => {
       document.removeEventListener("copy", onCopy);
       document.removeEventListener("cut", onCut);
+      document.removeEventListener("contextmenu", onContextMenu);
+      document.removeEventListener("selectstart", onSelectStart);
+
     };
   }, []);
 
@@ -63,8 +77,11 @@ export default function App() {
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/login" element={<Navigate to="/login" replace />} />
         <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/auth/signup" element={<Navigate to="/signup" replace />} />
         <Route path="/reset" element={<ResetPasswordPage />} />
+        <Route path="/auth/reset" element={<Navigate to="/reset" replace />} />
         {/* Compat: mantém /reset-password, mas o app inteiro usa o prefixo /app */}
         <Route path="/reset-password" element={<Navigate to="/app/reset-password" replace />} />
         <Route path="/app/reset-password" element={<NewPasswordPage />} />

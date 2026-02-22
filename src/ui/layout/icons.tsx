@@ -23,7 +23,9 @@ export function Icon({
     | "eye"
     | "eyeOff"
     | "droplet"
-    | "shield";
+    | "shield"
+    | "search"
+    | "bell";
   className?: string;
 }) {
   const common = cn("inline-block", className);
@@ -157,7 +159,22 @@ export function Icon({
         </svg>
       );
 
-case "x":
+    case "search":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M21 21l-4.3-4.3" />
+        </svg>
+      );
+    case "bell":
+      return (
+        <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7" />
+          <path d="M10 19a2 2 0 0 0 4 0" />
+        </svg>
+      );
+
+    case "x":
       return (
         <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
           <path d="M18 6 6 18M6 6l12 12" />

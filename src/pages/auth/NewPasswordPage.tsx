@@ -104,13 +104,13 @@ export default function NewPasswordPage() {
     <AuthShell title="Alterar senha" subtitle="Defina uma nova senha para sua conta.">
       <form onSubmit={onSubmit} className="grid gap-4">
         {configError ? (
-          <div className="rounded-xl2 border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+          <div className="rounded-xl2 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             {configError}
           </div>
         ) : null}
 
         {!ready ? (
-          <div className="rounded-xl2 border border-white/10 bg-white/5 p-3 text-sm text-slate-300">Validando link...</div>
+          <div className="rounded-xl2 border border-slate-200 bg-white p-3 text-sm text-slate-700">Validando link...</div>
         ) : (
           <>
             <Input
@@ -139,7 +139,7 @@ export default function NewPasswordPage() {
             </Button>
 
             <div className="text-sm">
-              <Link to="/login" className="text-slate-300 hover:text-white">
+              <Link to="/login" className="text-slate-700 hover:text-slate-900">
                 Voltar para login
               </Link>
             </div>

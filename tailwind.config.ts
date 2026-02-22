@@ -8,7 +8,8 @@ export default {
         xl2: "1.25rem"
       },
       boxShadow: {
-        soft: "0 18px 45px rgba(0,0,0,.25)"
+        // light theme friendly "Material-like" elevation
+        soft: "0 18px 45px rgba(2, 6, 23, .10)"
       }
     }
   },

@@ -13,8 +13,8 @@ export default defineConfig({
         name: "SaltInvest",
         short_name: "SaltInvest",
         description: "Gestão de investimentos centralizada com experiência premium.",
-        theme_color: "#0B1220",
-        background_color: "#0B1220",
+        theme_color: "#F8FAFC",
+        background_color: "#F8FAFC",
         display: "standalone",
         // O app navega sob /app; manter start_url coerente melhora instalação e detecção do prompt.
         scope: "/",
