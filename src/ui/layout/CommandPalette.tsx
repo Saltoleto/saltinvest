@@ -58,6 +58,14 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         run: (nav) => nav("/app/investments")
       },
       {
+        id: "nav-exposure",
+        label: "Exposição de investimentos",
+        icon: "pie",
+        group: "Navegação",
+        keywords: "exposição liquidez fgc concentração carteira",
+        run: (nav) => nav("/app/exposure")
+      },
+      {
         id: "nav-goals",
         label: "Metas",
         icon: "target",

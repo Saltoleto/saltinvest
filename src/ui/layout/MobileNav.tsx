@@ -5,14 +5,14 @@ import { Icon } from "./icons";
 import { cn } from "@/ui/utils/cn";
 
 const mobileItems = navMainItems.filter((x) =>
-  ["/app/dashboard", "/app/investments", "/app/goals", "/app/monthly-plan", "/app/settings"].includes(x.to)
+  ["/app/dashboard", "/app/investments", "/app/exposure", "/app/goals", "/app/monthly-plan", "/app/settings"].includes(x.to)
 );
 
 export default function MobileNav() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/90 backdrop-blur-md">
       <div className="mx-auto max-w-7xl px-3 py-2">
-        <div className="grid grid-cols-5 gap-0">
+        <div className="grid grid-cols-6 gap-0">
           {mobileItems.map((item) => (
             <NavLink
               key={item.to}

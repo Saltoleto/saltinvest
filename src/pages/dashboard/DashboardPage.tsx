@@ -886,41 +886,7 @@ export default function DashboardPage() {
   const yearGoals = useAsync(() => listYearGoalProjections(), []);
   const invs = useAsync(() => listInvestments(), []);
 
-  const allocationsByClass = React.useMemo(() => {
-    const rows = invs.data ?? [];
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      if (r.is_redeemed) continue;
-      const key = r.class_name || "—";
-      map.set(key, (map.get(key) ?? 0) + (Number(r.total_value) || 0));
-    }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [invs.data]);
-
-  const allocationsByLiquidity = React.useMemo(() => {
-    const rows = invs.data ?? [];
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      if (r.is_redeemed) continue;
-      const key = r.liquidity_type === "diaria" ? "Diária" : r.liquidity_type === "vencimento" ? "No vencimento" : "—";
-      map.set(key, (map.get(key) ?? 0) + (Number(r.total_value) || 0));
-    }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [invs.data]);
-
-  const allocationsByInstitution = React.useMemo(() => {
-    const rows = invs.data ?? [];
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      if (r.is_redeemed) continue;
-      const key = r.institution_name || "—";
-      map.set(key, (map.get(key) ?? 0) + (Number(r.total_value) || 0));
-    }
-    return Array.from(map.entries()).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [invs.data]);
-
   const totalEquity = Number(equity.data?.total_equity ?? 0);
-  const liquidEquity = Number(equity.data?.liquid_equity ?? 0);
 
 const now = new Date();
 const [updatedAt, setUpdatedAt] = React.useState<Date | null>(null);
@@ -944,12 +910,10 @@ const lastUpdatedLabel = React.useMemo(() => {
   return `há ${diffH} h`;
 }, [updatedAt]);
 
-  const fgcTotal = Number(equity.data?.fgc_protected_total ?? 0);
-
   return (
     <div className="grid gap-4 lg:gap-6">
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Patrimônio */}
+      <div className="grid grid-cols-1 gap-3">
         {equity.loading ? (
           <Card className="p-4">
             <Skeleton className="h-3 w-24" />
@@ -959,74 +923,7 @@ const lastUpdatedLabel = React.useMemo(() => {
         ) : (
           <StatCard title="Patrimônio" value={formatBRL(totalEquity)} subtitle="Soma dos ativos não resgatados" />
         )}
-
-        {equity.loading ? (
-          <Card className="p-4">
-            <Skeleton className="h-3 w-28" />
-            <Skeleton className="mt-3 h-8 w-32" />
-            <Skeleton className="mt-3 h-4 w-52" />
-          </Card>
-        ) : (
-          <StatCard title="Liquidez diária" value={formatBRL(liquidEquity)} subtitle="Disponível sem esperar vencimento" />
-        )}
-
-        {equity.loading ? (
-          <Card className="p-4">
-            <Skeleton className="h-3 w-28" />
-            <Skeleton className="mt-3 h-8 w-32" />
-            <Skeleton className="mt-3 h-4 w-44" />
-          </Card>
-        ) : (
-          <StatCard title="Proteção FGC" value={formatBRL(fgcTotal)} subtitle="Montante marcado como coberto" />
-        )}
       </div>
-
-
-
-
-{/* Concentração (cards premium, sem gráficos pesados) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {invs.loading ? (
-          <Card className="p-4">
-            <Skeleton className="h-4 w-44" />
-            <div className="mt-3 grid gap-2">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            <Skeleton className="mt-3 h-2 w-full" />
-          </Card>
-        ) : (
-          <ConcentrationCard title="Concentração por classe" items={allocationsByClass} accentA="bg-sky-400" accentB="bg-emerald-400" />
-        )}
-
-        {invs.loading ? (
-          <Card className="p-4">
-            <Skeleton className="h-4 w-48" />
-            <div className="mt-3 grid gap-2">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            <Skeleton className="mt-3 h-2 w-full" />
-          </Card>
-        ) : (
-          <ConcentrationCard title="Concentração por liquidez" items={allocationsByLiquidity} accentA="bg-sky-400" accentB="bg-amber-400" />
-        )}
-
-        {invs.loading ? (
-          <Card className="p-4">
-            <Skeleton className="h-4 w-52" />
-            <div className="mt-3 grid gap-2">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-14 w-full" />
-            </div>
-            <Skeleton className="mt-3 h-2 w-full" />
-          </Card>
-        ) : (
-          <ConcentrationCard title="Concentração por instituição" items={allocationsByInstitution} accentA="bg-sky-400" accentB="bg-violet-400" />
-        )}
-      </div>
-
-      
 
 {/* Resumo do mês + CTA */}
 <MonthlySummaryCard

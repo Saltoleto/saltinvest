@@ -1,6 +1,7 @@
 import React from "react";
 import PwaPrompts from "@/pwa/PwaPrompts";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import ScrollToTop from "@/routes/ScrollToTop";
 import ProtectedRoute from "@/state/auth/ProtectedRoute";
 import AppShell from "@/ui/layout/AppShell";
 
@@ -11,6 +12,7 @@ import NewPasswordPage from "@/pages/auth/NewPasswordPage";
 
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import MonthlyPlanPage from "@/pages/monthly/MonthlyPlanPage";
+import ExposureInvestmentsPage from "@/pages/exposure/ExposureInvestmentsPage";
 import InvestmentsPage from "@/pages/investments/InvestmentsPage";
 import GoalsPage from "@/pages/goals/GoalsPage";
 import GoalsYearPage from "@/pages/goals/GoalsYearPage";
@@ -74,6 +76,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <PwaPrompts />
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<LoginPage />} />
@@ -96,6 +99,7 @@ export default function App() {
         >
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="monthly-plan" element={<MonthlyPlanPage />} />
+          <Route path="exposure" element={<ExposureInvestmentsPage />} />
 
           <Route path="investments" element={<InvestmentsPage />} />
 
