@@ -16,6 +16,7 @@ export type YearGoalProjectionRow = {
   goal_id: string;
   name: string;
   target_value: number;
+  target_date: string;
   ytd: number;
   projected: number;
   proj_add: number;
@@ -71,7 +72,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
 
     const { data: metas, error: e1 } = await supabase
       .from("metas")
-      .select("id, nome, valor_alvo")
+      .select("id, nome, valor_alvo, data_alvo")
       .eq("user_id", uid)
       .order("created_at", { ascending: false });
     if (e1) throw e1;
@@ -127,6 +128,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
     const goals: YearGoalProjectionRow[] = (metas ?? []).map((g: any) => {
       const goalId = String(g.id);
       const target = Number(g.valor_alvo) || 0;
+      const targetDate = String(g.data_alvo || "");
       const ytdVal = ytdByGoal[goalId] ?? 0;
       const remainingToTarget = Math.max(0, target - ytdVal);
       const projAddRaw = rawRemainByGoal[goalId] ?? 0;
@@ -140,6 +142,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
         goal_id: goalId,
         name: String(g.nome),
         target_value: target,
+        target_date: targetDate,
         ytd: ytdVal,
         projected,
         proj_add: projAdd,

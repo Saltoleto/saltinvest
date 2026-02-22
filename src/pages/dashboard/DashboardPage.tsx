@@ -119,6 +119,13 @@ function ConcentrationCard({
 }
 
 function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
+  const tone =
+    title === "Patrimônio"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : title === "Liquidez diária"
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : "bg-violet-50 text-violet-700 border-violet-200";
+
   return (
     <Card className="p-4 relative overflow-hidden">
       {/* subtle top accent for premium hierarchy */}
@@ -129,14 +136,14 @@ function StatCard({ title, value, subtitle }: { title: string; value: string; su
           <div className="text-xs text-slate-600">{title}</div>
           <div className="mt-1 text-2xl font-semibold text-slate-900 tracking-tight">{value}</div>
         </div>
-        <div className="shrink-0 rounded-xl2 border border-slate-200 bg-white p-2">
+        <div className={"shrink-0 rounded-xl2 border p-2 " + tone}>
           {/* icon is inferred from title (keeps callsites unchanged) */}
           {title === "Patrimônio" ? (
-            <Icon name="wallet" className="h-5 w-5 text-blue-600" />
+            <Icon name="wallet" className="h-5 w-5" />
           ) : title === "Liquidez diária" ? (
-            <Icon name="droplet" className="h-5 w-5 text-emerald-600" />
+            <Icon name="droplet" className="h-5 w-5" />
           ) : (
-            <Icon name="shield" className="h-5 w-5 text-violet-600" />
+            <Icon name="shield" className="h-5 w-5" />
           )}
         </div>
       </div>
@@ -242,6 +249,7 @@ function YearGoalsProjectionCard({
     goal_id: string;
     name: string;
     target_value: number;
+    target_date?: string;
     ytd: number;
     proj_add: number;
     projected: number;
@@ -255,6 +263,7 @@ function YearGoalsProjectionCard({
   const year = now.getFullYear();
   const [collapsed, setCollapsed] = React.useState(false);
   const [showAll, setShowAll] = React.useState(false);
+  const [prioritiesExpanded, setPrioritiesExpanded] = React.useState(false);
 
   const [selectedGoalId, setSelectedGoalId] = React.useState<string | null>(null);
   const [sheetTab, setSheetTab] = React.useState<"resumo" | "plano">("resumo");
@@ -279,36 +288,84 @@ function YearGoalsProjectionCard({
     return Math.min(100, (totals.ytd / denom) * 100);
   }, [totals.ytd, totals.projected]);
 
-  const top = React.useMemo(() => {
-    // No mobile, prioriza "em risco" (projeção < 100%) para maximizar valor percebido.
-    // Depois, ordena pelo gap para 100% e, por fim, pelo impacto (proj_add).
-    return [...safeRows]
-      .sort((a, b) => {
-        const aOk = (a.projected_pct ?? 0) >= 100;
-        const bOk = (b.projected_pct ?? 0) >= 100;
-        if (aOk !== bOk) return aOk ? 1 : -1;
-        const aGap = Math.max(0, 100 - (a.projected_pct ?? 0));
-        const bGap = Math.max(0, 100 - (b.projected_pct ?? 0));
-        if (aGap !== bGap) return bGap - aGap;
-        return (b.proj_add || 0) - (a.proj_add || 0);
-      })
-      .slice(0, 5);
-  }, [safeRows]);
+  function dueYear(targetDate?: string): number {
+    if (!targetDate) return year;
+    const d = new Date(`${targetDate}T00:00:00`);
+    return Number.isFinite(d.getTime()) ? d.getFullYear() : year;
+  }
+
+  function isAtRisk(g: { target_date?: string; ytd_pct?: number; projected_pct?: number }): boolean {
+    const ytdPct = Number(g.ytd_pct) || 0;
+    if (ytdPct >= 100) return false;
+    // Só faz sentido marcar "Em risco" quando a meta vence neste ano (ou já venceu).
+    const isDueThisYearOrPast = dueYear(g.target_date) <= year;
+    const projPct = Number(g.projected_pct) || 0;
+    return isDueThisYearOrPast && projPct < 100;
+  }
+
+  const sortedGoals = React.useMemo(() => {
+    // Prioridades: 1) metas em risco (vence até Dez/{year} e projeção < 100)
+    // 2) demais metas com maior gap para 100%
+    // 3) desempate por impacto (proj_add)
+    const rows = [...safeRows];
+    rows.sort((a, b) => {
+      const aRisk = isAtRisk(a);
+      const bRisk = isAtRisk(b);
+      if (aRisk !== bRisk) return aRisk ? -1 : 1;
+
+      const aGap = Math.max(0, 100 - (Number(a.projected_pct) || 0));
+      const bGap = Math.max(0, 100 - (Number(b.projected_pct) || 0));
+      if (aGap !== bGap) return bGap - aGap;
+
+      return (Number(b.proj_add) || 0) - (Number(a.proj_add) || 0);
+    });
+    return rows;
+  }, [safeRows, year]);
+
+  const prioritiesToShow = React.useMemo(() => {
+    if (prioritiesExpanded) return sortedGoals;
+    return sortedGoals.slice(0, 3);
+  }, [sortedGoals, prioritiesExpanded]);
 
   const selected = React.useMemo(() => {
     if (!selectedGoalId) return null;
     return safeRows.find((r) => String(r.goal_id) === String(selectedGoalId)) ?? null;
   }, [safeRows, selectedGoalId]);
 
-  function statusChip(g: { ytd_pct: number; projected_pct: number }) {
+  function statusChip(g: { ytd_pct: number; projected_pct: number; target_date?: string }) {
     const ytdPct = Number(g.ytd_pct) || 0;
     const projPct = Number(g.projected_pct) || 0;
-    if (projPct >= 100) {
+    const isDueThisYearOrPast = dueYear(g.target_date) <= year;
+
+    if (ytdPct >= 100) {
       return {
-        label: ytdPct >= 100 ? "Concluída" : "No ritmo",
+        label: "Concluída",
         className: "border-emerald-200 bg-emerald-50 text-emerald-900"
       };
     }
+
+    // Metas com alvo depois deste ano não devem aparecer como "Em risco" neste card anual.
+    // Elas continuam em andamento (com o plano até Dez/{year}).
+    if (!isDueThisYearOrPast) {
+      if (projPct >= 100) {
+        return {
+          label: "Adiantada",
+          className: "border-emerald-200 bg-emerald-50 text-emerald-900"
+        };
+      }
+      return {
+        label: "Em andamento",
+        className: "border-sky-200 bg-sky-50 text-sky-900"
+      };
+    }
+
+    if (projPct >= 100) {
+      return {
+        label: "No ritmo",
+        className: "border-emerald-200 bg-emerald-50 text-emerald-900"
+      };
+    }
+
     return {
       label: "Em risco",
       className: "border-amber-200 bg-amber-50 text-amber-900"
@@ -407,13 +464,35 @@ function YearGoalsProjectionCard({
               {/* Prioridades */}
               <div className="rounded-xl2 border border-slate-200 bg-white p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-slate-900 font-semibold">Prioridades</div>
-                  <button type="button" className="text-sm text-blue-700 hover:text-blue-600" onClick={() => navigate("/app/goals/year")}>
-                    Ver todas
-                  </button>
+                  <div className="min-w-0">
+                    <div className="text-slate-900 font-semibold">Prioridades</div>
+                    <div className="text-xs text-slate-600">Mostrando {Math.min(prioritiesToShow.length, safeRows.length)} de {safeRows.length} meta(s)</div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-sm text-slate-700 hover:text-slate-900"
+                      onClick={() => navigate("/app/goals/year")}
+                      aria-label="Abrir visão anual"
+                    >
+                      Visão anual
+                    </button>
+
+                    {sortedGoals.length > 3 ? (
+                      <button
+                        type="button"
+                        className="text-sm text-blue-700 hover:text-blue-600"
+                        onClick={() => setPrioritiesExpanded((v) => !v)}
+                        aria-label={prioritiesExpanded ? "Recolher prioridades" : "Ver todas as prioridades"}
+                      >
+                        {prioritiesExpanded ? "Recolher" : "Ver todas"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-3 grid gap-2">
-                  {top.slice(0, 3).map((g) => {
+                  {prioritiesToShow.map((g) => {
                     const chip = statusChip(g);
                     const remaining = Math.max(0, Number(g.proj_add) || 0);
                     const perMonth = monthsLeft > 0 ? remaining / monthsLeft : remaining;
@@ -441,7 +520,7 @@ function YearGoalsProjectionCard({
                           </div>
                           <div className="shrink-0 text-right">
                             <div className="text-slate-900 font-semibold">{formatBRL(remaining)}</div>
-                            <div className="text-xs text-slate-600">até Dez • {formatPercent(Number(g.projected_pct) || 0)}</div>
+                            <div className="text-xs text-slate-600">até Dez/{year} • {formatPercent(Number(g.projected_pct) || 0)}</div>
                           </div>
                         </div>
                         <div className="mt-2">
@@ -499,7 +578,7 @@ function YearGoalsProjectionCard({
                             </div>
                             <div className="shrink-0 text-right">
                               <div className="text-slate-900 font-semibold">{formatBRL(remaining)}</div>
-                              <div className="text-xs text-slate-600">até Dez</div>
+                              <div className="text-xs text-slate-600">até Dez/{year}</div>
                             </div>
                           </div>
                         </button>
@@ -576,7 +655,7 @@ function YearGoalsProjectionCard({
               const projected = ytd + remaining;
               const ytdPct = target > 0 ? Math.min(100, (ytd / target) * 100) : 0;
               const projPct = target > 0 ? Math.min(100, (projected / target) * 100) : 0;
-              const chip = statusChip({ ytd_pct: ytdPct, projected_pct: projPct } as any);
+              const chip = statusChip({ ytd_pct: ytdPct, projected_pct: projPct, target_date: (selected as any).target_date } as any);
               const perMonth = monthsLeft > 0 ? remaining / monthsLeft : remaining;
 
               if (sheetTab === "plano") {
@@ -584,8 +663,17 @@ function YearGoalsProjectionCard({
                   <div className="rounded-xl2 border border-slate-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-slate-900 font-semibold">Plano até Dez</div>
-                        <div className="mt-1 text-sm text-slate-600">O que está aberto no plano mensal até o fim do ano.</div>
+                        <div className="text-slate-900 font-semibold">Plano até Dez/{year}</div>
+                        <div className="mt-1 text-sm text-slate-600">
+                          O que está aberto no plano mensal até o fim do ano.
+                          {(() => {
+                            const td = String((selected as any).target_date || "");
+                            if (!td) return null;
+                            return dueYear(td) > year ? (
+                              <span className="block mt-1 text-xs text-slate-500">Alvo em {formatDateBR(td)} • este card considera somente até Dez/{year}.</span>
+                            ) : null;
+                          })()}
+                        </div>
                       </div>
                       <span className={"shrink-0 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium " + chip.className}>
                         {chip.label}
@@ -594,7 +682,7 @@ function YearGoalsProjectionCard({
 
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="rounded-xl2 border border-slate-200 bg-white p-3">
-                        <div className="text-[11px] text-slate-600">Falta até Dez</div>
+                        <div className="text-[11px] text-slate-600">Falta até Dez/{year}</div>
                         <div className="mt-1 text-slate-900 font-semibold">{formatBRL(remaining)}</div>
                       </div>
                       <div className="rounded-xl2 border border-slate-200 bg-white p-3">
@@ -609,7 +697,7 @@ function YearGoalsProjectionCard({
 
                     <div className="mt-3">
                       <Progress value={projPct} />
-                      <div className="mt-1 text-xs text-slate-500">Seguindo o plano até Dez, você chega em {formatPercent(projPct)} do alvo.</div>
+                      <div className="mt-1 text-xs text-slate-500">Seguindo o plano até Dez/{year}, você chega em {formatPercent(projPct)} do alvo.</div>
                     </div>
                   </div>
                 );
@@ -620,7 +708,16 @@ function YearGoalsProjectionCard({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="text-slate-900 font-semibold">Visão geral</div>
-                      <div className="mt-1 text-sm text-slate-600">Resumo do ano + projeção do plano.</div>
+                      <div className="mt-1 text-sm text-slate-600">
+                        Resumo do ano + projeção do plano.
+                        {(() => {
+                          const td = String((selected as any).target_date || "");
+                          if (!td) return null;
+                          return dueYear(td) > year ? (
+                            <span className="block mt-1 text-xs text-slate-500">Alvo em {formatDateBR(td)} • este card mostra o avanço até Dez/{year}.</span>
+                          ) : null;
+                        })()}
+                      </div>
                     </div>
                     <span className={"shrink-0 inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium " + chip.className}>
                       {chip.label}
@@ -633,7 +730,7 @@ function YearGoalsProjectionCard({
                       <div className="mt-1 text-slate-900 font-semibold">{formatBRL(ytd)}</div>
                     </div>
                     <div className="rounded-xl2 border border-slate-200 bg-white p-3">
-                      <div className="text-[11px] text-slate-600">Previsto (até Dez)</div>
+                      <div className="text-[11px] text-slate-600">Previsto (até Dez/{year})</div>
                       <div className="mt-1 text-slate-900 font-semibold">{formatBRL(projected)}</div>
                     </div>
                     <div className="rounded-xl2 border border-slate-200 bg-white p-3">

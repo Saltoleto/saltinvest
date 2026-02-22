@@ -22,7 +22,9 @@ export default function SettingsPage() {
             className="rounded-xl2 border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 transition flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
-              <Icon name="pie" className="h-5 w-5 text-slate-800" />
+              <div className="h-10 w-10 rounded-xl2 border border-blue-200 bg-blue-50 text-blue-700 flex items-center justify-center">
+                <Icon name="pie" className="h-5 w-5" />
+              </div>
               <div>
                 <div className="text-slate-900 font-medium">Alvos</div>
                 <div className="text-xs text-slate-600">Percentual por classe</div>
@@ -35,7 +37,9 @@ export default function SettingsPage() {
             className="rounded-xl2 border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 transition flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
-              <Icon name="layers" className="h-5 w-5 text-slate-800" />
+              <div className="h-10 w-10 rounded-xl2 border border-blue-200 bg-blue-50 text-blue-700 flex items-center justify-center">
+                <Icon name="layers" className="h-5 w-5" />
+              </div>
               <div>
                 <div className="text-slate-900 font-medium">Classes</div>
                 <div className="text-xs text-slate-600">Categorias de ativos</div>
@@ -48,7 +52,9 @@ export default function SettingsPage() {
             className="rounded-xl2 border border-slate-200 bg-white px-4 py-3 hover:bg-slate-50 transition flex items-center justify-between"
           >
             <div className="flex items-center gap-3">
-              <Icon name="bank" className="h-5 w-5 text-slate-800" />
+              <div className="h-10 w-10 rounded-xl2 border border-blue-200 bg-blue-50 text-blue-700 flex items-center justify-center">
+                <Icon name="bank" className="h-5 w-5" />
+              </div>
               <div>
                 <div className="text-slate-900 font-medium">Instituições</div>
                 <div className="text-xs text-slate-600">Bancos e corretoras</div>
