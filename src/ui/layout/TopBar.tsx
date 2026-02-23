@@ -32,7 +32,14 @@ export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
+  const mobileCreate = pathname === "/app/investments"
+    ? { label: "Novo investimento", to: "/app/investments?modal=new" }
+    : pathname === "/app/goals"
+      ? { label: "Nova meta", to: "/app/goals?modal=new" }
+      : null;
+
   return (
+    <>
     <Card className="px-4 py-3 flex items-center justify-between gap-3">
       <div className="min-w-0">
         <div className="text-slate-900 font-semibold truncate">{getTitle(pathname)}</div>
@@ -70,7 +77,7 @@ export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?
             onClick={() => navigate("/app/investments?modal=new")}
             aria-label="Novo investimento"
             title="Novo investimento"
-            className="h-10 w-10 px-0 rounded-full shadow"
+            className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full shadow"
           >
             <Icon name="plus" className="h-5 w-5" />
             <span className="sr-only">Novo investimento</span>
@@ -82,7 +89,7 @@ export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?
             onClick={() => navigate("/app/goals?modal=new")}
             aria-label="Nova meta"
             title="Nova meta"
-            className="h-10 w-10 px-0 rounded-full shadow"
+            className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full shadow"
           >
             <Icon name="plus" className="h-5 w-5" />
             <span className="sr-only">Nova meta</span>
@@ -90,5 +97,18 @@ export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?
         ) : null}
       </div>
     </Card>
+
+    {mobileCreate ? (
+      <Button
+        onClick={() => navigate(mobileCreate.to)}
+        aria-label={mobileCreate.label}
+        title={mobileCreate.label}
+        className="sm:hidden fixed right-4 bottom-24 z-30 h-14 w-14 px-0 rounded-full shadow-lg"
+      >
+        <Icon name="plus" className="h-6 w-6" />
+        <span className="sr-only">{mobileCreate.label}</span>
+      </Button>
+    ) : null}
+    </>
   );
 }

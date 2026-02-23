@@ -107,7 +107,7 @@ export default function InstitutionsPage() {
           onClick={openNew}
           aria-label="Nova instituição"
           title="Nova instituição"
-          className="h-10 w-10 px-0 rounded-full"
+          className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full"
         >
           <Icon name="plus" className="h-5 w-5" />
           <span className="sr-only">Nova instituição</span>
@@ -178,6 +178,16 @@ export default function InstitutionsPage() {
         </div>
       </Modal>
     
+
+      <Button
+        onClick={() => setForm({ id: null, nome: "" })}
+        aria-label="Nova instituição"
+        title="Nova instituição"
+        className="sm:hidden fixed right-4 bottom-24 z-30 h-14 w-14 px-0 rounded-full shadow-lg"
+      >
+        <Icon name="plus" className="h-6 w-6" />
+        <span className="sr-only">Nova instituição</span>
+      </Button>
 
       <ConfirmDialog
         open={confirm.open}
