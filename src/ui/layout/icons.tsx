@@ -22,7 +22,9 @@ export type IconName =
   | "shield"
   | "search"
   | "bell"
-  | "trash";
+  | "trash"
+  | "edit"
+  | "redeem";
 
 function Svg({
   className,
@@ -216,7 +218,26 @@ export function Icon({
         </Svg>
       );
     
-    case "trash":
+    
+    case "edit":
+      return (
+        <Svg className={common} title={title}>
+          <path d="M3 17.25V21h3.75L19.81 7.94l-3.75-3.75L3 17.25Z" />
+          <path d="m14.06 4.19 3.75 3.75" />
+        </Svg>
+      );
+
+
+    case "redeem":
+      return (
+        <Svg className={common} title={title}>
+          <path d="M12 3v10" />
+          <path d="m8 9 4 4 4-4" />
+          <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" />
+        </Svg>
+      );
+
+case "trash":
       return (
         <Svg className={common} title={title}>
           <path d="M3 6h18" />

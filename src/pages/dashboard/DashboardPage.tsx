@@ -10,12 +10,28 @@ import { useAsync } from "@/state/useAsync";
 import { formatBRL, formatPercent, formatDateBR } from "@/lib/format";
 import { getEquitySummary } from "@/services/analytics";
 import { listInvestments } from "@/services/investments";
-import { getMonthlyPlanSummary } from "@/services/monthly";
+import { getMonthlyPlanSummary, listMonthlyPlanGoals } from "@/services/monthly";
 import { listYearGoalProjections } from "@/services/yearly";
 
 function pct(part: number, total: number): number {
   if (!total) return 0;
   return (part / total) * 100;
+}
+
+
+function addMonths(base: Date, months: number): Date {
+  return new Date(base.getFullYear(), base.getMonth() + months, 1);
+}
+
+function monthIsoStart(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}-${m}-01`;
+}
+
+function monthLabelShort(d: Date): string {
+  const labels = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return `${labels[d.getMonth()]}`
 }
 
 function ConcentrationCard({
@@ -118,7 +134,7 @@ function ConcentrationCard({
   );
 }
 
-function StatCard({ title, value, subtitle }: { title: string; value: string; subtitle: string }) {
+function StatCard({ title, value, subtitle, badge }: { title: string; value: string; subtitle: string; badge?: string }) {
   const tone =
     title === "Patrimônio"
       ? "bg-blue-50 text-blue-700 border-blue-200"
@@ -186,13 +202,15 @@ function MonthlySummaryCard({
   loading,
   onContribute,
   onOpenPlan,
-  lastUpdatedLabel
+  lastUpdatedLabel,
+  badge
 }: {
   summary: { total_suggested_this_month: number; total_contributed_this_month: number; total_remaining_this_month: number } | null;
   loading: boolean;
   onContribute: () => void;
   onOpenPlan: () => void;
   lastUpdatedLabel?: string;
+  badge?: string;
 }) {
   const suggested = Number(summary?.total_suggested_this_month ?? 0);
   const contributed = Number(summary?.total_contributed_this_month ?? 0);
@@ -211,7 +229,14 @@ return (
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400/30 via-sky-400/35 to-violet-400/25" />
       <div className="flex items-center justify-between gap-3 pt-2">
         <div className="min-w-0">
-          <div className="text-slate-900 font-semibold">{monthSummaryTitle}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-slate-900 font-semibold">{monthSummaryTitle}</div>
+            {badge ? (
+              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                {badge}
+              </span>
+            ) : null}
+          </div>
           <div className="mt-1 text-sm text-slate-600">
             {lastUpdatedLabel ? `Atualizado ${lastUpdatedLabel}` : " "}
           </div>
@@ -251,7 +276,9 @@ return (
 
 function YearGoalsProjectionCard({
   rows,
-  loading
+  loading,
+  year,
+  onYearChange
 }: {
   rows: {
     goal_id: string;
@@ -265,9 +292,10 @@ function YearGoalsProjectionCard({
     projected_pct: number;
   }[];
   loading: boolean;
+  year: number;
+  onYearChange?: (year: number) => void;
 }) {
   const navigate = useNavigate();
-  const year = new Date().getFullYear();
 
   // Defensive: in some integrations the service may return an object before normalization.
   const safeRows = React.useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
@@ -297,8 +325,11 @@ function YearGoalsProjectionCard({
           <div className="flex items-center justify-between gap-3 pt-2">
             <div className="min-w-0">
               <div className="text-slate-900 font-semibold">Resumo {year}</div>
-</div>
-</div>
+            </div>
+            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+              Planejado {year}
+            </span>
+          </div>
 
           <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="rounded-xl2 border border-slate-200 bg-white p-3">
@@ -458,12 +489,124 @@ function AlertsCard({
   );
 }
 
+
+function CapacityFulfillmentChart6m({ year }: { year: number }) {
+  const currentYear = new Date().getFullYear();
+  const months = React.useMemo(() => {
+    const base = year === currentYear ? new Date(currentYear, new Date().getMonth(), 1) : new Date(year, 0, 1);
+    return Array.from({ length: 6 }, (_, i) => addMonths(base, i));
+  }, [year, currentYear]);
+
+  const data = useAsync(async () => {
+    const rows = await Promise.all(
+      months.map(async (d) => {
+        const monthISO = monthIsoStart(d);
+        const goals = await listMonthlyPlanGoals(monthISO);
+        const suggested = goals.reduce((s, g) => s + Number(g.suggested_this_month ?? 0), 0);
+        const contributed = goals.reduce((s, g) => s + Number(g.contributed_this_month ?? 0), 0);
+        const remaining = Math.max(0, suggested - contributed);
+        return {
+          monthISO,
+          label: monthLabelShort(d),
+          suggested,
+          contributed,
+          remaining,
+          coveragePct: suggested > 0 ? Math.min(100, (contributed / suggested) * 100) : 0
+        };
+      })
+    );
+    return rows;
+  }, [year, months]);
+
+  const rows = Array.isArray(data.data) ? data.data : [];
+  const maxValue = Math.max(1, ...rows.map((r) => Math.max(r.suggested, r.contributed)));
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="text-slate-900 font-semibold">Capacidade de cumprimento (6 meses)</div>
+            <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+              Planejado {year}
+            </span>
+          </div>
+          <div className="mt-1 text-sm text-slate-600">Comparativo mensal entre sugerido, aportado e faltante do plano.</div>
+        </div>
+        <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+          6m
+        </span>
+      </div>
+
+      {data.loading ? (
+        <div className="mt-4 grid gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+        </div>
+      ) : !rows.length ? (
+        <div className="mt-4 rounded-xl2 border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          Sem metas no plano mensal para exibir a capacidade dos próximos meses.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {rows.map((r) => (
+            <div key={r.monthISO} className="rounded-xl2 border border-slate-200 bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-sm font-medium text-slate-900 uppercase">{r.label}</div>
+                <div className="text-xs text-slate-600">{formatPercent(r.coveragePct)}</div>
+              </div>
+
+              <div className="mt-2 grid gap-1.5">
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-600">
+                    <span>Sugerido</span>
+                    <span>{formatBRL(r.suggested)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-slate-300" style={{ width: `${(r.suggested / maxValue) * 100}%` }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-600">
+                    <span>Aportado</span>
+                    <span>{formatBRL(r.contributed)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-blue-500" style={{ width: `${(r.contributed / maxValue) * 100}%` }} />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-slate-600">
+                    <span>Gap</span>
+                    <span>{formatBRL(r.remaining)}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-amber-400" style={{ width: `${(r.remaining / maxValue) * 100}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600">
+            <div className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-slate-300" />Sugerido</div>
+            <div className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-blue-500" />Aportado</div>
+            <div className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-400" />Gap</div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
 
   const equity = useAsync(() => getEquitySummary(), []);
   const monthly = useAsync(() => getMonthlyPlanSummary(), []);
-  const yearGoals = useAsync(() => listYearGoalProjections(), []);
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
+  const yearGoals = useAsync(() => listYearGoalProjections(selectedYear), [selectedYear]);
   const invs = useAsync(() => listInvestments(), []);
 
   const totalEquity = Number(equity.data?.total_equity ?? 0);
@@ -492,6 +635,26 @@ const lastUpdatedLabel = React.useMemo(() => {
 
   return (
     <div className="grid gap-4 lg:gap-6">
+      <Card className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-slate-900 font-semibold">Dashboard</div>
+            <div className="text-sm text-slate-600">Ano de planejamento aplicado aos cards de análise.</div>
+          </div>
+          <div className="inline-flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-sm text-slate-600">Ano</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="rounded-xl2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              aria-label="Selecionar ano do dashboard"
+            >
+              <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+              <option value={new Date().getFullYear() + 1}>{new Date().getFullYear() + 1}</option>
+            </select>
+          </div>
+        </div>
+      </Card>
       {/* Patrimônio */}
       <div className="grid grid-cols-1 gap-3">
         {equity.loading ? (
@@ -501,7 +664,7 @@ const lastUpdatedLabel = React.useMemo(() => {
             <Skeleton className="mt-3 h-4 w-48" />
           </Card>
         ) : (
-          <StatCard title="Patrimônio" value={formatBRL(totalEquity)} subtitle="Soma dos ativos não resgatados" />
+          <StatCard title="Patrimônio" value={formatBRL(totalEquity)} subtitle="Soma dos ativos não resgatados" badge="Atual" />
         )}
       </div>
 
@@ -510,12 +673,20 @@ const lastUpdatedLabel = React.useMemo(() => {
   summary={monthly.data}
   loading={monthly.loading}
   lastUpdatedLabel={lastUpdatedLabel}
+  badge="Atual"
   onContribute={() => navigate("/app/investments?modal=new")}
   onOpenPlan={() => navigate("/app/monthly-plan")}
 />
 
-{/* Nova entrega de alto valor: visão de avanço anual + projeção */}
-      <YearGoalsProjectionCard rows={yearGoals.data?.goals ?? []} loading={yearGoals.loading} />
+{/* Resumo anual */}
+      <YearGoalsProjectionCard
+        rows={yearGoals.data?.goals ?? []}
+        loading={yearGoals.loading}
+        year={selectedYear}
+      />
+
+      {/* Nova entrega de alto valor: capacidade de cumprimento dos próximos 6 meses */}
+      <CapacityFulfillmentChart6m year={selectedYear} />
     </div>
   );
 }

@@ -155,15 +155,15 @@ export default function MonthlyPlanPage() {
               const contributed = Number(g.current_contributed) || 0;
               const percent = g.target_value > 0 ? (contributed / Number(g.target_value)) * 100 : 0;
               return (
-                <div key={g.goal_id} className={"rounded-xl2 border border-slate-200 bg-white p-4 " + cardEmphasisClass(status.variant)}>
+                <div key={g.goal_id} className={"relative rounded-xl2 border border-slate-200 bg-white p-4 " + cardEmphasisClass(status.variant)}>
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-                    <div>
+                    <div className="pr-12 sm:pr-0">
                       <div className="text-slate-900 font-medium">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-600">
                         Sugestão: <span className="text-slate-900 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
                       </div>
                     </div>
-                    <Badge variant={status.variant} title={status.label} aria-label={status.label}>
+                    <Badge variant={status.variant} title={status.label} aria-label={status.label} className="absolute right-4 top-4 sm:static sm:self-start">
                       {status.label === "Em dia" ? (
                         <span className="inline-flex items-center">
                           <Icon name="check" className="h-4 w-4" />

@@ -277,7 +277,7 @@ export default function GoalsPage() {
             {Array.from({ length: 2 }).map((_, i) => (
               <div key={i} className="rounded-xl2 border border-slate-200 bg-white p-4">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="min-w-0 pr-10">
                     <Skeleton className="h-4 w-36" />
                     <Skeleton className="mt-2 h-4 w-64" />
                   </div>
@@ -294,43 +294,40 @@ export default function GoalsPage() {
               const ev = byId.get(g.id);
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
-                <div key={g.id} className="rounded-xl2 border border-slate-200 bg-white p-4">
+                <div key={g.id} className="relative rounded-xl2 border border-slate-200 bg-white p-4">
+                  {g.is_monthly_plan ? (
+                    <span
+                      className="absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
+                      title="No plano do mês"
+                      aria-label="No plano do mês"
+                    >
+                      <Icon name="spark" className="h-4 w-4" />
+                    </span>
+                  ) : null}
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
-                      <div className="text-slate-900 font-medium break-words">{g.name}</div>
+                      <div className="min-w-0 flex-1 text-slate-900 font-medium break-words">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-600">
                         {formatBRL(Number(ev?.current_contributed ?? 0))} de {formatBRL(Number(g.target_value ?? 0))} • alvo {formatDateBR(g.target_date)}
                       </div>
-                    </div>
-
-                    
-                    <div className="mt-2 flex flex-wrap items-center gap-2 sm:mt-0">
-                      <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>
-                        {g.is_monthly_plan ? (
-                          <span className="inline-flex items-center gap-1.5" title="No plano do mês" aria-label="No plano do mês">
-                            <Icon name="spark" className="h-4 w-4" />
-                            <span className="text-xs">Plano do mês</span>
-                          </span>
-                        ) : (
-                          <span className="text-xs">Fora do plano</span>
-                        )}
-                      </Badge>
-
-                      <button
-                        type="button"
-                        onClick={() => void onDelete(g.id, g.name)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-rose-700 hover:bg-rose-50 transition"
-                        aria-label="Excluir meta"
-                        title="Excluir"
-                      >
-                        <Icon name="trash" className="h-5 w-5" />
-                      </button>
                     </div>
 </div>
 
                   <div className="mt-3">
                     <Progress value={pct} />
                     <div className="mt-2 text-xs text-slate-600">{pct.toFixed(1)}%</div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => void onDelete(g.id, g.name)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-rose-700 hover:bg-rose-50 transition"
+                      aria-label="Excluir meta"
+                      title="Excluir"
+                    >
+                      <Icon name="trash" className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               );

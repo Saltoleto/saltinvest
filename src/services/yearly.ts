@@ -105,9 +105,13 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
       ytdByGoal[gid] = (ytdByGoal[gid] ?? 0) + v;
     }
 
-    // "Até Dez" (faltante) = soma de parcelas/submetas ABERTA do mês atual até Dez.
+    // "Até Dez" (faltante):
+    // - ano atual: soma de parcelas/submetas ABERTA do mês atual até Dez
+    // - próximos anos: soma apenas das submetas ABERTA dentro do ano selecionado (Jan..Dez)
+    const currentYear = new Date().getFullYear();
     const nowMonth = monthStartISO();
     const dec = decMonthStart(y);
+    const remainStart = y === currentYear ? nowMonth : yStart;
 
     const { data: subsRemain, error: e3 } = await supabase
       .from("submetas")
@@ -115,7 +119,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
       .eq("user_id", uid)
       .in("meta_id", goalIds)
       .eq("status", "ABERTA")
-      .gte("data_referencia", nowMonth)
+      .gte("data_referencia", remainStart)
       .lte("data_referencia", dec);
     if (e3) throw e3;
 

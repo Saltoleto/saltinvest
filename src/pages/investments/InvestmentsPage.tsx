@@ -250,13 +250,15 @@ export default function InvestmentsPage() {
                       </Button>
                     ) : null}
 
-                    <Button
-                      variant="ghost"
+                    <button
+                      type="button"
                       onClick={() => void onDelete(r.id, r.name)}
-                      className="h-9 px-3 text-rose-700 hover:bg-rose-50"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-rose-700 hover:bg-rose-50 transition"
+                      aria-label="Excluir"
+                      title="Excluir"
                     >
-                      Excluir
-                    </Button>
+                      <Icon name="trash" className="h-5 w-5" />
+                    </button>
                   </div>
                 </div>
               );
