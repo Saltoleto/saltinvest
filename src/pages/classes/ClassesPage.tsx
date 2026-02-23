@@ -183,7 +183,7 @@ export default function ClassesPage() {
     
 
       <Button
-        onClick={() => setForm({ id: null, nome: "" })}
+        onClick={() => { setErrs({}); setForm({ name: "" }); setOpen(true); }}
         aria-label="Nova classe"
         title="Nova classe"
         className="sm:hidden fixed right-4 z-30 h-14 w-14 px-0 rounded-full shadow-lg ring-1 ring-white/70 fab-enter" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
