@@ -103,7 +103,7 @@ export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?
         onClick={() => navigate(mobileCreate.to)}
         aria-label={mobileCreate.label}
         title={mobileCreate.label}
-        className="sm:hidden fixed right-4 bottom-24 z-30 h-14 w-14 px-0 rounded-full shadow-lg"
+        className="sm:hidden fixed right-4 z-30 h-14 w-14 px-0 rounded-full shadow-lg ring-1 ring-white/70 fab-enter" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
       >
         <Icon name="plus" className="h-6 w-6" />
         <span className="sr-only">{mobileCreate.label}</span>

@@ -186,7 +186,7 @@ export default function ClassesPage() {
         onClick={() => setForm({ id: null, nome: "" })}
         aria-label="Nova classe"
         title="Nova classe"
-        className="sm:hidden fixed right-4 bottom-24 z-30 h-14 w-14 px-0 rounded-full shadow-lg"
+        className="sm:hidden fixed right-4 z-30 h-14 w-14 px-0 rounded-full shadow-lg ring-1 ring-white/70 fab-enter" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
       >
         <Icon name="plus" className="h-6 w-6" />
         <span className="sr-only">Nova classe</span>

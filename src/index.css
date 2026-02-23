@@ -69,3 +69,13 @@ select optgroup {
   background: #ffffff;
   color: #0f172a;
 }
+
+
+/* Mobile FAB */
+@keyframes fab-pop-in {
+  from { transform: translateY(8px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.fab-enter {
+  animation: fab-pop-in 180ms ease-out;
+}
