@@ -295,7 +295,7 @@ export default function GoalsPage() {
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
                 <div key={g.id} className="rounded-xl2 border border-slate-200 bg-white p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="text-slate-900 font-medium break-words">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-600">
@@ -303,26 +303,30 @@ export default function GoalsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2 sm:justify-start">
+                    
+                    <div className="mt-2 flex flex-wrap items-center gap-2 sm:mt-0">
                       <Badge variant={g.is_monthly_plan ? "info" : "neutral"}>
                         {g.is_monthly_plan ? (
-                          <span className="inline-flex items-center" title="No plano do mês" aria-label="No plano do mês">
+                          <span className="inline-flex items-center gap-1.5" title="No plano do mês" aria-label="No plano do mês">
                             <Icon name="spark" className="h-4 w-4" />
-                            <span className="sr-only">No plano do mês</span>
+                            <span className="text-xs">Plano do mês</span>
                           </span>
                         ) : (
-                          "Fora do plano"
+                          <span className="text-xs">Fora do plano</span>
                         )}
                       </Badge>
-                      <Button
-                        variant="ghost"
+
+                      <button
+                        type="button"
                         onClick={() => void onDelete(g.id, g.name)}
-                        className="h-9 px-3 text-rose-700 hover:bg-rose-50"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-rose-700 hover:bg-rose-50 transition"
+                        aria-label="Excluir meta"
+                        title="Excluir"
                       >
-                        Excluir
-                      </Button>
+                        <Icon name="trash" className="h-5 w-5" />
+                      </button>
                     </div>
-                  </div>
+</div>
 
                   <div className="mt-3">
                     <Progress value={pct} />

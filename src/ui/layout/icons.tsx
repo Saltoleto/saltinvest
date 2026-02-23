@@ -21,7 +21,8 @@ export type IconName =
   | "droplet"
   | "shield"
   | "search"
-  | "bell";
+  | "bell"
+  | "trash";
 
 function Svg({
   className,
@@ -214,6 +215,18 @@ export function Icon({
           <path d="M10 19a2 2 0 0 0 4 0" />
         </Svg>
       );
+    
+    case "trash":
+      return (
+        <Svg className={common} title={title}>
+          <path d="M3 6h18" />
+          <path d="M8 6V4h8v2" />
+          <path d="M6 6l1 16h10l1-16" />
+          <path d="M10 11v6" />
+          <path d="M14 11v6" />
+        </Svg>
+      );
+
     case "x":
       return (
         <Svg className={common} title={title}>
