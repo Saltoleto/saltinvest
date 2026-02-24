@@ -227,7 +227,7 @@ function MonthlySummaryCard({
 return (
     <Card className="p-4 relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400/30 via-sky-400/35 to-violet-400/25" />
-      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 pt-1 sm:pt-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-slate-900 font-semibold">{monthSummaryTitle}</div>
@@ -237,9 +237,11 @@ return (
               </span>
             ) : null}
           </div>
-          <div className="mt-1 hidden sm:block text-sm text-slate-600">
-            {lastUpdatedLabel ? `Atualizado ${lastUpdatedLabel}` : " "}
-          </div>
+          {lastUpdatedLabel ? (
+            <div className="mt-1 hidden sm:block text-sm text-slate-600">
+              {`Atualizado ${lastUpdatedLabel}`}
+            </div>
+          ) : null}
         </div>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end sm:gap-2 w-full sm:w-auto">
           <Button onClick={onContribute} size="sm" className="w-full justify-center sm:w-auto">
@@ -635,18 +637,18 @@ const lastUpdatedLabel = React.useMemo(() => {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-slate-900 font-semibold">Planejamento anual</div>
-            <div className="text-sm text-slate-600">Selecione o ano aplicado aos cards de análise.</div>
+      <Card className="p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <div className="text-slate-900 font-semibold text-sm sm:text-base">Planejamento anual</div>
+            <div className="hidden sm:block text-sm text-slate-600">Selecione o ano aplicado aos cards de análise.</div>
           </div>
-          <div className="inline-flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-sm text-slate-600">Ano</span>
+          <div className="flex items-center justify-between sm:justify-start gap-2 w-full sm:w-auto rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 sm:px-0 sm:py-0 sm:border-0 sm:bg-transparent">
+            <span className="text-xs sm:text-sm text-slate-600">Ano</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="rounded-xl2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              className="min-w-[88px] rounded-lg sm:rounded-xl2 border border-slate-200 bg-white px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-slate-800"
               aria-label="Selecionar ano do dashboard"
             >
               <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>

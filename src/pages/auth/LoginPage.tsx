@@ -1,5 +1,5 @@
 import React from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AuthShell from "./AuthShell";
 import Input from "@/ui/primitives/Input";
 import Button from "@/ui/primitives/Button";
@@ -10,8 +10,7 @@ export default function LoginPage() {
   const { signIn, user, configError } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
-  const location = useLocation() as any;
-  const from = location.state?.from ?? "/app/dashboard";
+  const from = "/app/dashboard";
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
