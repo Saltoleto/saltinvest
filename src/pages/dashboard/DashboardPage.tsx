@@ -638,8 +638,8 @@ const lastUpdatedLabel = React.useMemo(() => {
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-slate-900 font-semibold">Dashboard</div>
-            <div className="text-sm text-slate-600">Ano de planejamento aplicado aos cards de análise.</div>
+            <div className="text-slate-900 font-semibold">Planejamento anual</div>
+            <div className="text-sm text-slate-600">Selecione o ano aplicado aos cards de análise.</div>
           </div>
           <div className="inline-flex items-center gap-2 self-start sm:self-auto">
             <span className="text-sm text-slate-600">Ano</span>
