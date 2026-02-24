@@ -6,10 +6,17 @@ import Input from "@/ui/primitives/Input";
 import Select from "@/ui/primitives/Select";
 import Modal from "@/ui/primitives/Modal";
 import Toggle from "@/ui/primitives/Toggle";
-import Badge from "@/ui/primitives/Badge";
 import Progress from "@/ui/primitives/Progress";
 import { useAsync } from "@/state/useAsync";
-import { listGoals, listGoalsEvolution, upsertGoal, deleteGoal } from "@/services/goals";
+import {
+  listGoals,
+  listGoalsEvolution,
+  upsertGoal,
+  deleteGoal,
+  baixarSubmetaMetaMesReferencia,
+  ajustarSubmetaMetaMesReferencia,
+  getSubmetaValorMetaMesReferencia
+} from "@/services/goals";
 import { formatBRL, formatDateBR, clamp } from "@/lib/format";
 import { toNumberBRL, requireNonEmpty, requirePositiveNumber } from "@/lib/validate";
 import { maskBRLCurrencyInput } from "@/lib/masks";
@@ -26,6 +33,15 @@ type ConfirmState = {
   tone?: ConfirmTone;
   busy?: boolean;
   action?: () => Promise<void>;
+};
+
+type AdjustState = {
+  open: boolean;
+  goalId: string;
+  goalName: string;
+  currentValue: string;
+  value: string;
+  busy?: boolean;
 };
 
 type FormState = {
@@ -54,8 +70,15 @@ export default function GoalsPage() {
   const [saving, setSaving] = React.useState(false);
   const [form, setForm] = React.useState<FormState>({ name: "", target_value: "", start_date: "", target_date: "", is_monthly_plan: true });
   const [errs, setErrs] = React.useState<Record<string, string>>({});
-
   const [confirm, setConfirm] = React.useState<ConfirmState>({ open: false, title: "" });
+  const [adjust, setAdjust] = React.useState<AdjustState>({ open: false, goalId: "", goalName: "", currentValue: "", value: "" });
+
+  const [filtersCollapsed, setFiltersCollapsed] = React.useState(true);
+  const [q, setQ] = React.useState("");
+  const [planFilter, setPlanFilter] = React.useState<"all" | "in" | "out">("all");
+  const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "done" | "overdue">("all");
+  const [dateFrom, setDateFrom] = React.useState<string>("");
+  const [dateTo, setDateTo] = React.useState<string>("");
 
   function pad2(n: number) {
     return String(n).padStart(2, "0");
@@ -64,6 +87,11 @@ export default function GoalsPage() {
   function todayISO() {
     const d = new Date();
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  function currentMonthRefISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
   }
 
   function plusMonthsISO(months: number) {
@@ -85,15 +113,10 @@ export default function GoalsPage() {
   React.useEffect(() => {
     const sp = new URLSearchParams(location.search);
     if (sp.get("modal") !== "new") return;
-
-    // Abre o modal via ação do TopBar e limpa o parâmetro para evitar reabertura.
     openNew();
     sp.delete("modal");
     const nextSearch = sp.toString();
-    navigate(
-      { pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" },
-      { replace: true }
-    );
+    navigate({ pathname: location.pathname, search: nextSearch ? `?${nextSearch}` : "" }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
 
@@ -106,7 +129,6 @@ export default function GoalsPage() {
     if (n2) e.target_value = n2;
     if (!form.start_date) e.start_date = "Data início é obrigatória.";
     if (!form.target_date) e.target_date = "Data alvo é obrigatória.";
-
     setErrs(e);
     if (Object.keys(e).length) return;
 
@@ -137,7 +159,9 @@ export default function GoalsPage() {
       title: "Excluir meta",
       description: (
         <>
-          <div className="text-slate-800">Excluir <span className="font-semibold">{name}</span>?</div>
+          <div className="text-slate-800">
+            Excluir <span className="font-semibold">{name}</span>?
+          </div>
           <div className="mt-1 text-sm text-slate-600">Isso remove vínculos de alocação relacionados.</div>
         </>
       ),
@@ -159,21 +183,98 @@ export default function GoalsPage() {
     });
   }
 
-  const rows = goals.data ?? [];
+  function openBaixar(id: string, name: string) {
+    setConfirm({
+      open: true,
+      title: "Baixar submeta",
+      tone: "warning",
+      confirmLabel: "Baixar",
+      description: (
+        <>
+          <div className="text-slate-800">
+            Baixar a submeta do mês <span className="font-semibold">{formatDateBR(currentMonthRefISO())}</span> da meta{" "}
+            <span className="font-semibold">{name}</span>?
+          </div>
+          <div className="mt-1 text-sm text-slate-600">
+            O valor será zerado e redistribuído entre as submetas subsequentes abertas (se permitido pelas regras).
+          </div>
+        </>
+      ),
+      action: async () => {
+        try {
+          setConfirm((c) => ({ ...c, busy: true }));
+          await baixarSubmetaMetaMesReferencia(id, currentMonthRefISO());
+          toast.push({ title: "Submeta baixada", tone: "success" });
+          goals.reload();
+          evol.reload();
+        } catch (err: any) {
+          toast.push({ title: "Erro ao baixar", message: err?.message ?? "Erro", tone: "danger" });
+        } finally {
+          setConfirm({ open: false, title: "" });
+        }
+      }
+    });
+  }
 
-  const [filtersCollapsed, setFiltersCollapsed] = React.useState(true);
-  const [q, setQ] = React.useState("");
-  const [planFilter, setPlanFilter] = React.useState<"all" | "in" | "out">("all");
-  const [statusFilter, setStatusFilter] = React.useState<"all" | "active" | "done" | "overdue">("all");
-  const [dateFrom, setDateFrom] = React.useState<string>("");
-  const [dateTo, setDateTo] = React.useState<string>("");
+  async function openAjuste(id: string, name: string) {
+    const ref = currentMonthRefISO();
+    const ev = byId.get(id) as any;
+    const fallback = Number(ev?.planned_month_amount ?? ev?.current_month_expected ?? 0);
+
+    setAdjust({
+      open: true,
+      goalId: id,
+      goalName: name,
+      currentValue: formatBRL(fallback),
+      value: fallback > 0 ? maskBRLCurrencyInput(String(fallback.toFixed(2)).replace(".", ",")) : "",
+      busy: false
+    });
+
+    try {
+      const valorAtual = await getSubmetaValorMetaMesReferencia(id, ref);
+      setAdjust((s) => {
+        if (!s.open || s.goalId !== id) return s;
+        return {
+          ...s,
+          currentValue: formatBRL(valorAtual),
+          value: valorAtual > 0 ? maskBRLCurrencyInput(String(valorAtual.toFixed(2)).replace(".", ",")) : ""
+        };
+      });
+    } catch {
+      // mantém fallback visual se não conseguir carregar a submeta específica
+    }
+  }
+
+  async function onSubmitAjuste() {
+    const valorNovo = toNumberBRL(adjust.value);
+    if (!Number.isFinite(valorNovo) || valorNovo === 0) {
+      toast.push({
+        title: "Valor inválido",
+        message: "Informe um valor diferente de zero. Para zerar a submeta, use Baixar.",
+        tone: "danger"
+      });
+      return;
+    }
+    try {
+      setAdjust((s) => ({ ...s, busy: true }));
+      await ajustarSubmetaMetaMesReferencia({ goalId: adjust.goalId, newValue: valorNovo, referenceDate: currentMonthRefISO() });
+      toast.push({ title: "Submeta ajustada", tone: "success" });
+      setAdjust({ open: false, goalId: "", goalName: "", currentValue: "", value: "" });
+      goals.reload();
+      evol.reload();
+    } catch (err: any) {
+      setAdjust((s) => ({ ...s, busy: false }));
+      toast.push({ title: "Erro ao ajustar", message: err?.message ?? "Erro", tone: "danger" });
+    }
+  }
+
+  const rows = goals.data ?? [];
 
   function derivedStatus(ev: any, goal: any): "done" | "overdue" | "active" {
     const pct = Number(ev?.percent_progress ?? 0);
     if (pct >= 100) return "done";
     const days = Number(ev?.days_remaining);
     if (!Number.isNaN(days) && days < 0) return "overdue";
-    // fallback: compare target_date to today
     const td = goal?.target_date ? new Date(goal.target_date).getTime() : NaN;
     if (!Number.isNaN(td)) {
       const now = new Date();
@@ -187,31 +288,21 @@ export default function GoalsPage() {
     const query = q.trim().toLowerCase();
     const from = dateFrom ? new Date(dateFrom).getTime() : null;
     const to = dateTo ? new Date(dateTo).getTime() : null;
-    return rows
-      .filter((g) => {
-        if (planFilter === "in" && !g.is_monthly_plan) return false;
-        if (planFilter === "out" && g.is_monthly_plan) return false;
-
-        const ev = byId.get(g.id);
-        const st = derivedStatus(ev, g);
-        if (statusFilter === "done" && st !== "done") return false;
-        if (statusFilter === "overdue" && st !== "overdue") return false;
-        if (statusFilter === "active" && st !== "active") return false;
-
-        if (query) {
-          if (!String(g.name ?? "").toLowerCase().includes(query)) return false;
-        }
-
-        if (from || to) {
-          const td = g.target_date ? new Date(g.target_date).getTime() : null;
-          if (td == null) return false;
-          if (from != null && td < from) return false;
-          if (to != null && td > to) return false;
-        }
-
-        return true;
-      })
-      .slice();
+    return rows.filter((g: any) => {
+      if (planFilter === "in" && !g.is_monthly_plan) return false;
+      if (planFilter === "out" && g.is_monthly_plan) return false;
+      const ev = byId.get(g.id);
+      const st = derivedStatus(ev, g);
+      if (statusFilter !== "all" && st !== statusFilter) return false;
+      if (query && !String(g.name ?? "").toLowerCase().includes(query)) return false;
+      if (from || to) {
+        const td = g.target_date ? new Date(g.target_date).getTime() : null;
+        if (td == null) return false;
+        if (from != null && td < from) return false;
+        if (to != null && td > to) return false;
+      }
+      return true;
+    });
   }, [rows, q, planFilter, statusFilter, dateFrom, dateTo, byId]);
 
   return (
@@ -237,12 +328,11 @@ export default function GoalsPage() {
           </button>
         </div>
 
-        {filtersCollapsed ? null : (
+        {!filtersCollapsed && (
           <div className="mt-4 grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
             <div className="lg:col-span-2">
               <Input label="Nome" placeholder="Buscar" value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
-
             <div className="lg:col-span-1">
               <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
                 <option value="all">Todos</option>
@@ -251,7 +341,6 @@ export default function GoalsPage() {
                 <option value="done">Concluída</option>
               </Select>
             </div>
-
             <div className="lg:col-span-1">
               <Select label="Plano do mês" value={planFilter} onChange={(e) => setPlanFilter(e.target.value as any)}>
                 <option value="all">Todas</option>
@@ -259,11 +348,9 @@ export default function GoalsPage() {
                 <option value="out">Fora do plano</option>
               </Select>
             </div>
-
             <div className="lg:col-span-1">
               <Input label="Data alvo (de)" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
             </div>
-
             <div className="lg:col-span-1">
               <Input label="Data alvo (até)" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
             </div>
@@ -281,7 +368,7 @@ export default function GoalsPage() {
                     <Skeleton className="h-4 w-36" />
                     <Skeleton className="mt-2 h-4 w-64" />
                   </div>
-                  <Skeleton className="h-9 w-20" />
+                  <Skeleton className="h-9 w-28" />
                 </div>
                 <Skeleton className="mt-4 h-2 w-full" />
                 <Skeleton className="mt-2 h-3 w-12" />
@@ -290,8 +377,8 @@ export default function GoalsPage() {
           </div>
         ) : filtered.length ? (
           <div className="grid gap-3">
-            {filtered.map((g) => {
-              const ev = byId.get(g.id);
+            {filtered.map((g: any) => {
+              const ev = byId.get(g.id) as any;
               const pct = clamp(Number(ev?.percent_progress ?? 0), 0, 100);
               return (
                 <div key={g.id} className="relative rounded-xl2 border border-slate-200 bg-white p-4">
@@ -304,21 +391,22 @@ export default function GoalsPage() {
                       <Icon name="spark" className="h-4 w-4" />
                     </span>
                   ) : null}
+
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="min-w-0 flex-1 text-slate-900 font-medium break-words">{g.name}</div>
+                    <div className="min-w-0 pr-10">
+                      <div className="text-slate-900 font-medium break-words">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-600">
                         {formatBRL(Number(ev?.current_contributed ?? 0))} de {formatBRL(Number(g.target_value ?? 0))} • alvo {formatDateBR(g.target_date)}
                       </div>
                     </div>
-</div>
+                  </div>
 
                   <div className="mt-3">
                     <Progress value={pct} />
                     <div className="mt-2 text-xs text-slate-600">{pct.toFixed(1)}%</div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-end">
+                  <div className="mt-3 flex items-center justify-end gap-2 flex-wrap">
                     <button
                       type="button"
                       onClick={() => void onDelete(g.id, g.name)}
@@ -327,6 +415,26 @@ export default function GoalsPage() {
                       title="Excluir"
                     >
                       <Icon name="trash" className="h-5 w-5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openBaixar(g.id, g.name)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-amber-700 hover:bg-amber-50 transition"
+                      aria-label="Baixar submeta"
+                      title="Baixar submeta do mês"
+                    >
+                      <Icon name="baixa" className="h-5 w-5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openAjuste(g.id, g.name)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl2 border border-slate-200 bg-white text-blue-700 hover:bg-blue-50 transition"
+                      aria-label="Ajustar submeta"
+                      title="Ajustar submeta do mês"
+                    >
+                      <Icon name="ajuste" className="h-5 w-5" />
                     </button>
                   </div>
                 </div>
@@ -396,13 +504,41 @@ export default function GoalsPage() {
             checked={form.is_monthly_plan}
             onChange={(v) => setForm((s) => ({ ...s, is_monthly_plan: v }))}
           />
-
-          <div className="text-xs text-slate-500">
-            Dica: o progresso vem dos aportes (aportes) vinculados a esta meta.
-          </div>
         </div>
       </Modal>
-    
+
+      <Modal
+        open={adjust.open}
+        title="Ajustar submeta"
+        onClose={() => !adjust.busy && setAdjust((s) => ({ ...s, open: false }))}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAdjust((s) => ({ ...s, open: false }))} disabled={!!adjust.busy}>
+              Cancelar
+            </Button>
+            <Button onClick={() => void onSubmitAjuste()} disabled={!!adjust.busy}>
+              {adjust.busy ? "Aplicando..." : "Aplicar ajuste"}
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-4">
+          <div className="rounded-xl2 border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            <div className="font-medium text-slate-900">{adjust.goalName}</div>
+            <div className="mt-1">Mês de referência: {formatDateBR(currentMonthRefISO())}</div>
+            <div>Valor atual da submeta: {adjust.currentValue}</div>
+          </div>
+
+          <Input
+            label="Novo valor da submeta (R$)"
+            placeholder="R$ 0,00"
+            inputMode="numeric"
+            value={adjust.value}
+            onChange={(e) => setAdjust((s) => ({ ...s, value: maskBRLCurrencyInput(e.target.value) }))}
+            hint="Diferente de zero. Para zerar e redistribuir, use Baixar."
+          />
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={confirm.open}
@@ -416,6 +552,6 @@ export default function GoalsPage() {
           await confirm.action?.();
         }}
       />
-</div>
+    </div>
   );
 }

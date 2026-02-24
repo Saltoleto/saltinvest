@@ -85,11 +85,11 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
       };
     }
 
-    // "Agora" (realizado) baseado no plano: soma de parcelas/submetas com status APORTADA (equivalente a ATINGIDA)
-    // Usamos valor_esperado como fonte de verdade do plano (e não valor_aportado), para garantir consistência com o alvo.
+    // "Agora" (realizado no ano): soma de valor_aportado das submetas no ano selecionado.
+    // Regra de negócio/UX: o card deve refletir o valor efetivamente aportado (incluindo excedentes no mês).
     const { data: subsYear, error: e2 } = await supabase
       .from("submetas")
-      .select("meta_id, valor_esperado, status, data_referencia")
+      .select("meta_id, valor_aportado, data_referencia")
       .eq("user_id", uid)
       .in("meta_id", goalIds)
       .gte("data_referencia", yStart)
@@ -99,9 +99,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
     const ytdByGoal: Record<string, number> = {};
     for (const s of subsYear ?? []) {
       const gid = String((s as any).meta_id);
-      const st = String((s as any).status || "");
-      const achieved = st === "APORTADA" || st === "ATINGIDA";
-      const v = achieved ? (Number((s as any).valor_esperado) || 0) : 0;
+      const v = Number((s as any).valor_aportado) || 0;
       ytdByGoal[gid] = (ytdByGoal[gid] ?? 0) + v;
     }
 
@@ -115,7 +113,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
 
     const { data: subsRemain, error: e3 } = await supabase
       .from("submetas")
-      .select("meta_id, valor_esperado, status, data_referencia")
+      .select("meta_id, valor_esperado, valor_aportado, status, data_referencia")
       .eq("user_id", uid)
       .in("meta_id", goalIds)
       .eq("status", "ABERTA")
@@ -126,7 +124,10 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
     const rawRemainByGoal: Record<string, number> = {};
     for (const s of subsRemain ?? []) {
       const gid = String((s as any).meta_id);
-      rawRemainByGoal[gid] = (rawRemainByGoal[gid] ?? 0) + (Number((s as any).valor_esperado) || 0);
+      const expected = Number((s as any).valor_esperado) || 0;
+      const contributed = Number((s as any).valor_aportado) || 0;
+      const remainingOpenInstallment = Math.max(0, expected - contributed);
+      rawRemainByGoal[gid] = (rawRemainByGoal[gid] ?? 0) + remainingOpenInstallment;
     }
 
     const goals: YearGoalProjectionRow[] = (metas ?? []).map((g: any) => {
@@ -134,9 +135,7 @@ export async function listYearGoalProjections(year?: number): Promise<{ totals: 
       const target = Number(g.valor_alvo) || 0;
       const targetDate = String(g.data_alvo || "");
       const ytdVal = ytdByGoal[goalId] ?? 0;
-      const remainingToTarget = Math.max(0, target - ytdVal);
-      const projAddRaw = rawRemainByGoal[goalId] ?? 0;
-      const projAdd = Math.min(projAddRaw, remainingToTarget);
+      const projAdd = rawRemainByGoal[goalId] ?? 0;
       const projected = ytdVal + projAdd;
 
       const ytdPct = target > 0 ? Math.min(100, (ytdVal / target) * 100) : 0;

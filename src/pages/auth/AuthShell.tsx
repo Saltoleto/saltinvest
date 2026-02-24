@@ -7,7 +7,7 @@ export default function AuthShell({
   children
 }: {
   title: string;
-  subtitle: React.ReactNode;
+  subtitle: string;
   children: React.ReactNode;
 }) {
   return (
@@ -24,7 +24,7 @@ export default function AuthShell({
         <Card className="p-5 sm:p-6">{children}</Card>
 
         <div className="mt-5 text-center text-xs text-slate-500">
-          <span>SaltInvest</span>
+          <span>SaltInvest • PWA • Supabase</span>
         </div>
       </div>
     </div>

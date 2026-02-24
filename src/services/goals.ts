@@ -150,3 +150,50 @@ export async function listGoalsEvolution(): Promise<GoalEvolutionRow[]> {
     });
   });
 }
+
+
+
+export async function getSubmetaValorMetaMesReferencia(goalId: string, referenceDate: string): Promise<number> {
+  const uid = await requireUserId();
+  const { data, error } = await supabase
+    .from("submetas")
+    .select("valor_esperado")
+    .eq("user_id", uid)
+    .eq("meta_id", goalId)
+    .eq("data_referencia", referenceDate)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return Number((data as any)?.valor_esperado ?? 0);
+}
+
+export async function baixarSubmetaMetaMesReferencia(goalId: string, referenceDate?: string) {
+  const { data, error } = await supabase.rpc("fn_baixar_submeta_meta_mes_referencia", {
+    p_meta_id: goalId,
+    p_data_referencia: referenceDate ?? null
+  });
+  if (error) throw error;
+  cacheInvalidate("goals");
+  cacheInvalidate("goals-evolution");
+  cacheInvalidate("monthly-plan");
+  cacheInvalidate("dashboard");
+  return data as { ok?: boolean; meta_id?: string; data_referencia?: string; valor_baixado?: number };
+}
+
+export async function ajustarSubmetaMetaMesReferencia(params: {
+  goalId: string;
+  newValue: number;
+  referenceDate?: string;
+}) {
+  const { data, error } = await supabase.rpc("fn_ajustar_submeta_meta_mes_referencia", {
+    p_meta_id: params.goalId,
+    p_novo_valor: params.newValue,
+    p_data_referencia: params.referenceDate ?? null
+  });
+  if (error) throw error;
+  cacheInvalidate("goals");
+  cacheInvalidate("goals-evolution");
+  cacheInvalidate("monthly-plan");
+  cacheInvalidate("dashboard");
+  return data as { ok?: boolean; meta_id?: string; data_referencia?: string; valor_anterior?: number; valor_novo?: number };
+}

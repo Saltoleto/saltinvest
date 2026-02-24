@@ -91,7 +91,7 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
       const raw = String(prefillTotalValue ?? "").trim();
       const n = Number(raw.replace(",", "."));
       if (Number.isFinite(n) && n > 0) {
-        setTotalValue(maskBRLCurrencyInput(String(Math.round(n * 100))));
+        setTotalValue(maskBRLCurrencyInput(String(n)));
       }
       return;
     }

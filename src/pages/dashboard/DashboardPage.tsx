@@ -147,8 +147,8 @@ function StatCard({ title, value, subtitle, badge }: { title: string; value: str
       {/* subtle top accent for premium hierarchy */}
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-sky-400/40 via-emerald-400/30 to-violet-400/30" />
 
-      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
+      <div className="flex items-start justify-between gap-3 pt-2">
+        <div className="min-w-0 sm:flex-1">
           <div className="text-xs text-slate-600">{title}</div>
           <div className="mt-1 text-2xl font-semibold text-slate-900 tracking-tight">{value}</div>
         </div>
@@ -227,17 +227,17 @@ function MonthlySummaryCard({
 return (
     <Card className="p-4 relative overflow-hidden">
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400/30 via-sky-400/35 to-violet-400/25" />
-      <div className="flex items-center justify-between gap-3 pt-2">
+      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-slate-900 font-semibold">{monthSummaryTitle}</div>
             {badge ? (
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+              <span className="hidden sm:inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                 {badge}
               </span>
             ) : null}
           </div>
-          <div className="mt-1 text-sm text-slate-600">
+          <div className="mt-1 hidden sm:block text-sm text-slate-600">
             {lastUpdatedLabel ? `Atualizado ${lastUpdatedLabel}` : " "}
           </div>
         </div>

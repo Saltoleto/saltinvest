@@ -24,6 +24,8 @@ export type IconName =
   | "bell"
   | "trash"
   | "edit"
+  | "baixa"
+  | "ajuste"
   | "redeem";
 
 function Svg({
@@ -228,6 +230,26 @@ export function Icon({
       );
 
 
+
+    case "baixa":
+      return (
+        <Svg className={common} title={title}>
+          <path d="M12 3v10" />
+          <path d="m8 10 4 4 4-4" />
+          <path d="M4 20h16" />
+        </Svg>
+      );
+    case "ajuste":
+      return (
+        <Svg className={common} title={title}>
+          <path d="M4 7h6" />
+          <path d="M14 7h6" />
+          <circle cx="12" cy="7" r="2" />
+          <path d="M4 17h10" />
+          <path d="M18 17h2" />
+          <circle cx="16" cy="17" r="2" />
+        </Svg>
+      );
     case "redeem":
       return (
         <Svg className={common} title={title}>

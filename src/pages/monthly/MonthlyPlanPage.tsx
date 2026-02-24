@@ -20,6 +20,7 @@ type GoalRow = {
   contributed_this_month: number;
   remaining_this_month: number;
   priority_rank?: number;
+  submeta_status?: string;
 };
 
 function getMonthlyStatus(g: GoalRow): { label: string; variant: "success" | "warning" | "danger" | "info" } {
@@ -36,6 +37,10 @@ function cardEmphasisClass(variant: "success" | "warning" | "danger" | "info") {
   if (variant === "danger") return "ring-1 ring-red-400/30 bg-red-400/5";
   if (variant === "warning") return "ring-1 ring-amber-400/25 bg-amber-400/5";
   return "";
+}
+
+function isBaixadaStatus(status?: string) {
+  return String(status ?? "").toUpperCase() === "BAIXADA";
 }
 
 export default function MonthlyPlanPage() {
@@ -148,23 +153,54 @@ export default function MonthlyPlanPage() {
                 current_contributed: Number(g.current_contributed) || 0,
                 suggested_this_month: Number(g.suggested_this_month) || 0,
                 contributed_this_month: Number(g.contributed_this_month) || 0,
-                remaining_this_month: Number(g.remaining_this_month) || 0
+                remaining_this_month: Number(g.remaining_this_month) || 0,
+                submeta_status: String(g.submeta_status ?? "")
               };
               const status = getMonthlyStatus(row);
-              const monthlyProgress = row.suggested_this_month > 0 ? (row.contributed_this_month / row.suggested_this_month) * 100 : 0;
+              const isBaixada = isBaixadaStatus(row.submeta_status);
+              const monthlyProgress = isBaixada
+                ? 100
+                : row.suggested_this_month > 0
+                  ? (row.contributed_this_month / row.suggested_this_month) * 100
+                  : 0;
               const contributed = Number(g.current_contributed) || 0;
               const percent = g.target_value > 0 ? (contributed / Number(g.target_value)) * 100 : 0;
               return (
-                <div key={g.goal_id} className={"relative rounded-xl2 border border-slate-200 bg-white p-4 " + cardEmphasisClass(status.variant)}>
+                <div
+                  key={g.goal_id}
+                  className={
+                    "relative rounded-xl2 border border-slate-200 bg-white p-4 " +
+                    cardEmphasisClass(status.variant) +
+                    (isBaixada ? " border-slate-200/80 bg-slate-50/60" : "")
+                  }
+                >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                     <div className="pr-12 sm:pr-0">
                       <div className="text-slate-900 font-medium">{g.name}</div>
                       <div className="mt-1 text-sm text-slate-600">
-                        Sugestão: <span className="text-slate-900 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
+                        {isBaixada ? (
+                          <>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="text-slate-900 font-medium">Meta baixada no mês selecionado</span>
+                            </span>
+                            <span className="block text-xs text-slate-500 mt-1">Sem aporte sugerido neste mês.</span>
+                          </>
+                        ) : (
+                          <>
+                            Sugestão: <span className="text-slate-900 font-medium">{formatBRL(Number(g.suggested_this_month))}</span>/mês
+                          </>
+                        )}
                       </div>
                     </div>
-                    <Badge variant={status.variant} title={status.label} aria-label={status.label} className="absolute right-4 top-4 sm:static sm:self-start">
-                      {status.label === "Em dia" ? (
+                    <Badge
+                      variant={isBaixada ? "info" : status.variant}
+                      title={isBaixada ? "Baixada" : status.label}
+                      aria-label={isBaixada ? "Baixada" : status.label}
+                      className="absolute right-4 top-4 sm:static sm:self-start"
+                    >
+                      {isBaixada ? (
+                        "Baixada"
+                      ) : status.label === "Em dia" ? (
                         <span className="inline-flex items-center">
                           <Icon name="check" className="h-4 w-4" />
                           <span className="sr-only">Em dia</span>
@@ -177,15 +213,17 @@ export default function MonthlyPlanPage() {
 
                   <div className="mt-3">
                     <div className="flex items-center justify-between text-xs text-slate-600">
-                      <span>Mês</span>
+                      <span>{isBaixada ? "Mês (baixado)" : "Mês"}</span>
                       <span>
-                        {formatBRL(row.contributed_this_month)} / {formatBRL(row.suggested_this_month)}
+                        {isBaixada
+                          ? "Sem aporte"
+                          : `${formatBRL(row.contributed_this_month)} / ${formatBRL(row.suggested_this_month)}`}
                       </span>
                     </div>
                     <Progress className="mt-2" value={clamp(monthlyProgress, 0, 100)} />
 
                     <div className="mt-3 flex items-center justify-between text-xs text-slate-600">
-                      <span>Total</span>
+                      <span>{isBaixada ? "Total da meta" : "Total"}</span>
                       <span>{formatPercent(Number(percent) || 0)}</span>
                     </div>
                     <Progress value={clamp(Number(percent) || 0, 0, 100)} />

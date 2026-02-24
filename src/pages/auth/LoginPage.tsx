@@ -38,15 +38,7 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthShell
-      title="Entrar"
-      subtitle={
-        <>
-          <span className="block font-medium text-slate-700">Transforme planejamento em progresso.</span>
-          <span className="mt-1 block text-slate-500">Gerencie sua carteira e metas com uma experiência simples e inteligente.</span>
-        </>
-      }
-    >
+    <AuthShell title="Entrar" subtitle="Acesse sua carteira e seu plano do mês.">
       <form onSubmit={onSubmit} className="grid gap-4">
         {configError ? (
           <div className="rounded-xl2 border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -90,6 +82,10 @@ export default function LoginPage() {
           <Link to="/signup" className="text-slate-700 hover:text-slate-900">
             Criar conta
           </Link>
+        </div>
+
+        <div className="text-xs text-slate-500">
+          Dica: No Supabase, habilite o provedor Email em Auth → Providers.
         </div>
       </form>
     </AuthShell>

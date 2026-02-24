@@ -26,6 +26,7 @@ export type MonthlyPlanGoalRow = {
   suggested_this_month: number;
   contributed_this_month: number;
   remaining_this_month: number;
+  submeta_status?: string;
 };
 
 export type MonthlyPlanRankingRow = MonthlyPlanGoalRow & {
@@ -134,6 +135,7 @@ export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPl
       const suggested = Number(s.valor_esperado) || 0;
       const paid = Number(s.valor_aportado) || 0;
       const remainingThisMonth = Math.max(0, suggested - paid);
+      const submetaStatus = String(s.status ?? "").toUpperCase();
 
       return {
         user_id: uid,
@@ -147,7 +149,8 @@ export async function listMonthlyPlanGoals(monthISO?: string): Promise<MonthlyPl
         months_remaining: monthsRemainingFromNow(String(g?.data_alvo ?? m)),
         suggested_this_month: suggested,
         contributed_this_month: paid,
-        remaining_this_month: remainingThisMonth
+        remaining_this_month: remainingThisMonth,
+        submeta_status: submetaStatus
       };
     });
   });
