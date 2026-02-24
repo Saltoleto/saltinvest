@@ -18,6 +18,30 @@ export default function AppShell() {
   const navigate = useNavigate();
   const [cmdOpen, setCmdOpen] = React.useState(false);
 
+  // PERF: Prefetch das telas mais prováveis após entrar no app.
+  // Isso melhora muito a navegação percebida (principalmente no mobile),
+  // sem inflar o bundle inicial (pois continua em chunks separados).
+  React.useEffect(() => {
+    const run = () => {
+      // Prefetch só quando o usuário já entrou no /app.
+      if (!location.pathname.startsWith("/app")) return;
+      // Rotas mais acessadas.
+      import("@/pages/dashboard/DashboardPage");
+      import("@/pages/monthly/MonthlyPlanPage");
+      import("@/pages/exposure/ExposureInvestmentsPage");
+      import("@/pages/investments/InvestmentsPage");
+      import("@/pages/goals/GoalsPage");
+    };
+
+    const w = window as any;
+    if (typeof w.requestIdleCallback === "function") {
+      const id = w.requestIdleCallback(run, { timeout: 1500 });
+      return () => w.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(run, 350);
+    return () => window.clearTimeout(t);
+  }, [location.pathname]);
+
   React.useEffect(() => {
     // simple guard for trailing /app
     if (location.pathname === "/app") navigate("/app/dashboard", { replace: true });

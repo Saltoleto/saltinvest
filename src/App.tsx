@@ -5,22 +5,24 @@ import ScrollToTop from "@/routes/ScrollToTop";
 import ProtectedRoute from "@/state/auth/ProtectedRoute";
 import AppShell from "@/ui/layout/AppShell";
 
-import LoginPage from "@/pages/auth/LoginPage";
-import SignUpPage from "@/pages/auth/SignUpPage";
-import ResetPasswordPage from "@/pages/auth/ResetPasswordPage";
-import NewPasswordPage from "@/pages/auth/NewPasswordPage";
+// PERF: code-splitting por rota.
+// Isso reduz drasticamente o bundle inicial (principalmente no mobile).
+const LoginPage = React.lazy(() => import("@/pages/auth/LoginPage"));
+const SignUpPage = React.lazy(() => import("@/pages/auth/SignUpPage"));
+const ResetPasswordPage = React.lazy(() => import("@/pages/auth/ResetPasswordPage"));
+const NewPasswordPage = React.lazy(() => import("@/pages/auth/NewPasswordPage"));
 
-import DashboardPage from "@/pages/dashboard/DashboardPage";
-import MonthlyPlanPage from "@/pages/monthly/MonthlyPlanPage";
-import ExposureInvestmentsPage from "@/pages/exposure/ExposureInvestmentsPage";
-import InvestmentsPage from "@/pages/investments/InvestmentsPage";
-import GoalsPage from "@/pages/goals/GoalsPage";
-import GoalsYearPage from "@/pages/goals/GoalsYearPage";
-import ClassesPage from "@/pages/classes/ClassesPage";
-import TargetsPage from "@/pages/targets/TargetsPage";
-import InstitutionsPage from "@/pages/institutions/InstitutionsPage";
-import SettingsPage from "@/pages/settings/SettingsPage";
-import NotFoundPage from "@/pages/system/NotFoundPage";
+const DashboardPage = React.lazy(() => import("@/pages/dashboard/DashboardPage"));
+const MonthlyPlanPage = React.lazy(() => import("@/pages/monthly/MonthlyPlanPage"));
+const ExposureInvestmentsPage = React.lazy(() => import("@/pages/exposure/ExposureInvestmentsPage"));
+const InvestmentsPage = React.lazy(() => import("@/pages/investments/InvestmentsPage"));
+const GoalsPage = React.lazy(() => import("@/pages/goals/GoalsPage"));
+const GoalsYearPage = React.lazy(() => import("@/pages/goals/GoalsYearPage"));
+const ClassesPage = React.lazy(() => import("@/pages/classes/ClassesPage"));
+const TargetsPage = React.lazy(() => import("@/pages/targets/TargetsPage"));
+const InstitutionsPage = React.lazy(() => import("@/pages/institutions/InstitutionsPage"));
+const SettingsPage = React.lazy(() => import("@/pages/settings/SettingsPage"));
+const NotFoundPage = React.lazy(() => import("@/pages/system/NotFoundPage"));
 
 import { useAuth } from "@/state/auth/AuthContext";
 import FullScreenLoader from "@/ui/feedback/FullScreenLoader";
@@ -77,45 +79,45 @@ export default function App() {
     <BrowserRouter>
       <PwaPrompts />
       <ScrollToTop />
-      <Routes>
-        <Route path="/" element={<RootRedirect />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/login" element={<Navigate to="/login" replace />} />
-        <Route path="/signup" element={<SignUpPage />} />
-        <Route path="/auth/signup" element={<Navigate to="/signup" replace />} />
-        <Route path="/reset" element={<ResetPasswordPage />} />
-        <Route path="/auth/reset" element={<Navigate to="/reset" replace />} />
-        {/* Compat: mantém /reset-password, mas o app inteiro usa o prefixo /app */}
-        <Route path="/reset-password" element={<Navigate to="/app/reset-password" replace />} />
-        <Route path="/app/reset-password" element={<NewPasswordPage />} />
+      <React.Suspense fallback={<FullScreenLoader label="Carregando..." />}>
+        <Routes>
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/login" element={<Navigate to="/login" replace />} />
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/auth/signup" element={<Navigate to="/signup" replace />} />
+          <Route path="/reset" element={<ResetPasswordPage />} />
+          <Route path="/auth/reset" element={<Navigate to="/reset" replace />} />
+          {/* Compat: mantém /reset-password, mas o app inteiro usa o prefixo /app */}
+          <Route path="/reset-password" element={<Navigate to="/app/reset-password" replace />} />
+          <Route path="/app/reset-password" element={<NewPasswordPage />} />
 
-        <Route
-          path="/app"
-          element={
-            <ProtectedRoute>
-              <AppShell />
-            </ProtectedRoute>
-          }
-        >
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="monthly-plan" element={<MonthlyPlanPage />} />
-          <Route path="exposure" element={<ExposureInvestmentsPage />} />
+          <Route
+            path="/app"
+            element={
+              <ProtectedRoute>
+                <AppShell />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="monthly-plan" element={<MonthlyPlanPage />} />
+            <Route path="exposure" element={<ExposureInvestmentsPage />} />
+            <Route path="investments" element={<InvestmentsPage />} />
 
-          <Route path="investments" element={<InvestmentsPage />} />
+            <Route path="goals" element={<GoalsPage />} />
+            {/* Rotas premium: visão anual detalhada */}
+            <Route path="goals/year" element={<GoalsYearPage />} />
+            <Route path="metas/ano" element={<GoalsYearPage />} />
+            <Route path="classes" element={<ClassesPage />} />
+            <Route path="targets" element={<TargetsPage />} />
+            <Route path="institutions" element={<InstitutionsPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
 
-
-          <Route path="goals" element={<GoalsPage />} />
-          {/* Rotas premium: visão anual detalhada */}
-          <Route path="goals/year" element={<GoalsYearPage />} />
-          <Route path="metas/ano" element={<GoalsYearPage />} />
-          <Route path="classes" element={<ClassesPage />} />
-          <Route path="targets" element={<TargetsPage />} />
-          <Route path="institutions" element={<InstitutionsPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </React.Suspense>
     </BrowserRouter>
   );
 }
