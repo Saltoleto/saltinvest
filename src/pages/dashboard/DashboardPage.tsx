@@ -147,7 +147,7 @@ function StatCard({ title, value, subtitle, badge }: { title: string; value: str
       {/* subtle top accent for premium hierarchy */}
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-sky-400/40 via-emerald-400/30 to-violet-400/30" />
 
-      <div className="flex items-center justify-between gap-3 pt-2">
+      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-xs text-slate-600">{title}</div>
           <div className="mt-1 text-2xl font-semibold text-slate-900 tracking-tight">{value}</div>
@@ -229,7 +229,7 @@ return (
       <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-400/30 via-sky-400/35 to-violet-400/25" />
       <div className="flex items-center justify-between gap-3 pt-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="text-slate-900 font-semibold">{monthSummaryTitle}</div>
             {badge ? (
               <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
@@ -241,21 +241,21 @@ return (
             {lastUpdatedLabel ? `Atualizado ${lastUpdatedLabel}` : " "}
           </div>
         </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <Button onClick={onContribute} size="sm">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:justify-end sm:gap-2 w-full sm:w-auto">
+          <Button onClick={onContribute} size="sm" className="w-full justify-center sm:w-auto">
             Aportar agora
           </Button>
           <button
             type="button"
             onClick={onOpenPlan}
-            className="rounded-xl2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 transition"
+            className="w-full sm:w-auto rounded-xl2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 transition text-center"
           >
             Ver plano
           </button>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="mt-3 sm:mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         {loading ? (
           <>
             <Skeleton className="h-14 w-full" />
@@ -674,7 +674,11 @@ const lastUpdatedLabel = React.useMemo(() => {
   loading={monthly.loading}
   lastUpdatedLabel={lastUpdatedLabel}
   badge="Atual"
-  onContribute={() => navigate("/app/investments?modal=new")}
+  onContribute={() => {
+    const suggested = Number(monthly.data?.total_suggested_this_month ?? 0);
+    const qs = suggested > 0 ? `?modal=new&prefillTotal=${encodeURIComponent(String(suggested))}` : "?modal=new";
+    navigate(`/app/investments${qs}`);
+  }}
   onOpenPlan={() => navigate("/app/monthly-plan")}
 />
 
@@ -686,7 +690,6 @@ const lastUpdatedLabel = React.useMemo(() => {
       />
 
       {/* Nova entrega de alto valor: capacidade de cumprimento dos próximos 6 meses */}
-      <CapacityFulfillmentChart6m year={selectedYear} />
     </div>
   );
 }

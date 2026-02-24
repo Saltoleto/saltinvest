@@ -4,6 +4,10 @@ import Card from "../primitives/Card";
 import Button from "../primitives/Button";
 import { Icon } from "./icons";
 
+type TopBarProps = {
+  onOpenCommandPalette?: () => void;
+};
+
 const titleByPath: Array<[RegExp, string]> = [
   [/\/app\/dashboard/, "Dashboard"],
   [/\/app\/monthly-plan/, "Plano do mês"],
@@ -12,103 +16,84 @@ const titleByPath: Array<[RegExp, string]> = [
   [/\/app\/targets/, "Alvos da carteira"],
   [/\/app\/classes/, "Classes"],
   [/\/app\/institutions/, "Instituições"],
-  [/\/app\/settings/, "Configurações"]
+  [/\/app\/settings/, "Config"]
 ];
 
-function getTitle(pathname: string) {
-  const found = titleByPath.find(([re]) => re.test(pathname));
-  return found?.[1] ?? "SaltInvest";
+const subtitleByPath: Array<[RegExp, string]> = [
+  [/\/app\/dashboard/, "Concentre, planeje, evolua."],
+  [/\/app\/monthly-plan/, "Concentre, planeje, evolua."],
+  [/\/app\/investments/, "Concentre, planeje, evolua."],
+  [/\/app\/goals/, "Concentre, planeje, evolua."],
+  [/\/app\/targets/, "Concentre, planeje, evolua."],
+  [/\/app\/classes/, "Cadastre e organize classes."],
+  [/\/app\/institutions/, "Cadastre e organize instituições."],
+  [/\/app\/settings/, "Preferências da aplicação."]
+];
+
+function pickByPath(pathname: string, list: Array<[RegExp, string]>, fallback: string) {
+  for (const [rx, value] of list) {
+    if (rx.test(pathname)) return value;
+  }
+  return fallback;
 }
 
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="hidden sm:inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700">
-      {children}
-    </span>
-  );
-}
-
-export default function TopBar({ onOpenCommandPalette }: { onOpenCommandPalette?: () => void }) {
-  const { pathname } = useLocation();
+export default function TopBar({ onOpenCommandPalette: _onOpenCommandPalette }: TopBarProps) {
+  const location = useLocation();
   const navigate = useNavigate();
+  const pathname = location.pathname;
 
-  const mobileCreate = pathname === "/app/investments"
+  const title = pickByPath(pathname, titleByPath, "SaltInvest");
+  const subtitle = pickByPath(pathname, subtitleByPath, "Concentre, planeje, evolua.");
+
+  const canCreateInvestment = /\/app\/investments/.test(pathname);
+  const canCreateGoal = /\/app\/goals/.test(pathname);
+
+  const desktopCreate = canCreateInvestment
     ? { label: "Novo investimento", to: "/app/investments?modal=new" }
-    : pathname === "/app/goals"
+    : canCreateGoal
       ? { label: "Nova meta", to: "/app/goals?modal=new" }
       : null;
 
+  const mobileCreate = desktopCreate;
+
   return (
     <>
-    <Card className="px-4 py-3 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="text-slate-900 font-semibold truncate">{getTitle(pathname)}</div>
-        <div className="text-xs text-slate-600 truncate">Concentre, planeje, evolua.</div>
-      </div>
+      <Card className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-slate-900 font-semibold">{title}</div>
+            <div className="text-slate-600 text-sm">{subtitle}</div>
+          </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onOpenCommandPalette}
-          className="hidden sm:flex items-center gap-2 rounded-xl2 border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 hover:bg-slate-100 transition"
-          aria-label="Buscar"
+          <div className="flex shrink-0 items-center gap-2">
+            {/* Mantemos apenas ação de cadastro quando aplicável; busca global removida */}
+            {desktopCreate ? (
+              <Button
+                onClick={() => navigate(desktopCreate.to)}
+                aria-label={desktopCreate.label}
+                title={desktopCreate.label}
+                className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full shadow"
+              >
+                <Icon name="plus" className="h-4 w-4" />
+                <span className="sr-only">{desktopCreate.label}</span>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </Card>
+
+      {mobileCreate ? (
+        <Button
+          onClick={() => navigate(mobileCreate.to)}
+          aria-label={mobileCreate.label}
+          title={mobileCreate.label}
+          className="sm:hidden fixed right-4 z-30 h-14 w-14 px-0 rounded-full shadow-lg ring-1 ring-white/70 fab-enter"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
         >
-          <Icon name="search" className="h-4 w-4" />
-          <span>Buscar</span>
-          <span className="ml-2 flex items-center gap-1">
-            <Kbd>Ctrl</Kbd>
-            <Kbd>K</Kbd>
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onOpenCommandPalette}
-          className="sm:hidden rounded-xl2 border border-slate-200 bg-slate-50 p-2 text-slate-800 hover:bg-slate-100 transition"
-          aria-label="Buscar"
-          title="Buscar"
-        >
-          <Icon name="search" className="h-5 w-5" />
-          <span className="sr-only">Buscar</span>
-        </button>
-
-        {pathname === "/app/investments" ? (
-          <Button
-            onClick={() => navigate("/app/investments?modal=new")}
-            aria-label="Novo investimento"
-            title="Novo investimento"
-            className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full shadow"
-          >
-            <Icon name="plus" className="h-5 w-5" />
-            <span className="sr-only">Novo investimento</span>
-          </Button>
-        ) : null}
-
-        {pathname === "/app/goals" ? (
-          <Button
-            onClick={() => navigate("/app/goals?modal=new")}
-            aria-label="Nova meta"
-            title="Nova meta"
-            className="hidden sm:inline-flex h-10 w-10 px-0 rounded-full shadow"
-          >
-            <Icon name="plus" className="h-5 w-5" />
-            <span className="sr-only">Nova meta</span>
-          </Button>
-        ) : null}
-      </div>
-    </Card>
-
-    {mobileCreate ? (
-      <Button
-        onClick={() => navigate(mobileCreate.to)}
-        aria-label={mobileCreate.label}
-        title={mobileCreate.label}
-        className="sm:hidden fixed right-4 z-30 h-14 w-14 px-0 rounded-full shadow-lg ring-1 ring-white/70 fab-enter" style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
-      >
-        <Icon name="plus" className="h-6 w-6" />
-        <span className="sr-only">{mobileCreate.label}</span>
-      </Button>
-    ) : null}
+          <Icon name="plus" className="h-6 w-6" />
+          <span className="sr-only">{mobileCreate.label}</span>
+        </Button>
+      ) : null}
     </>
   );
 }

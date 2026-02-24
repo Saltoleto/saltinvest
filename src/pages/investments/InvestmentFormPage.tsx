@@ -29,10 +29,11 @@ type Props = {
   onClose: () => void;
   onSaved: () => void;
   onMetaChange?: (m: { isSaving: boolean; isBusy: boolean }) => void;
+  prefillTotalValue?: string;
 };
 
 export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(function InvestmentForm(
-  { mode, investmentId, onClose, onSaved, onMetaChange },
+  { mode, investmentId, onClose, onSaved, onMetaChange, prefillTotalValue },
   ref
 ) {
   const toast = useToast();
@@ -87,6 +88,11 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
   React.useEffect(() => {
     if (mode === "create") {
       resetForCreate();
+      const raw = String(prefillTotalValue ?? "").trim();
+      const n = Number(raw.replace(",", "."));
+      if (Number.isFinite(n) && n > 0) {
+        setTotalValue(maskBRLCurrencyInput(String(Math.round(n * 100))));
+      }
       return;
     }
     if (!existing.data) return;

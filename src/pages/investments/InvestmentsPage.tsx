@@ -38,6 +38,7 @@ export default function InvestmentsPage() {
 
   const modal = searchParams.get("modal");
   const editId = searchParams.get("edit");
+  const prefillTotal = searchParams.get("prefillTotal");
   const isOpen = modal === "new" || !!editId;
   const mode: "create" | "edit" = editId ? "edit" : "create";
 
@@ -233,20 +234,25 @@ export default function InvestmentsPage() {
                     <Button
                       variant="secondary"
                       onClick={() => setSearchParams({ edit: r.id })}
-                      className="h-9 px-3"
+                      className="h-9 w-9 px-0"
                       disabled={r.is_redeemed}
                       title={r.is_redeemed ? "Investimentos resgatados não podem ser editados." : undefined}
+                      aria-label="Editar"
                     >
-                      Editar
+                      <Icon name="edit" className="h-5 w-5" />
+                      <span className="sr-only">Editar</span>
                     </Button>
 
                     {!r.is_redeemed ? (
                       <Button
                         variant="ghost"
                         onClick={() => void redeem(r.id, r.name)}
-                        className="h-9 px-3 text-amber-900 hover:bg-amber-50"
+                        className="h-9 w-9 px-0 text-amber-900 hover:bg-amber-50"
+                        aria-label="Resgatar"
+                        title="Resgatar"
                       >
-                        Resgatar
+                        <Icon name="redeem" className="h-5 w-5" />
+                        <span className="sr-only">Resgatar</span>
                       </Button>
                     ) : null}
 
@@ -294,6 +300,7 @@ export default function InvestmentsPage() {
           ref={formRef}
           mode={mode}
           investmentId={editId ?? undefined}
+          prefillTotalValue={mode === "create" ? (prefillTotal ?? undefined) : undefined}
           onClose={() => setSearchParams({})}
           onMetaChange={setFormMeta}
           onSaved={() => {

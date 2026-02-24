@@ -133,8 +133,9 @@ export default function InstitutionsPage() {
               <div key={c.id} className="rounded-xl2 border border-slate-200 bg-white p-4 flex items-center justify-between gap-3">
                 <div className="text-slate-900 font-medium">{c.name}</div>
                 <div className="flex gap-2">
-                  <Button variant="secondary" onClick={() => openEdit(c)} className="h-9 px-3">
-                    Editar
+                  <Button variant="secondary" onClick={() => openEdit(c)} className="h-9 w-9 px-0" aria-label="Editar" title="Editar">
+                    <Icon name="edit" className="h-5 w-5" />
+                    <span className="sr-only">Editar</span>
                   </Button>
                   <button
                       type="button"
