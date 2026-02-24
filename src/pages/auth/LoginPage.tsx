@@ -5,6 +5,7 @@ import Input from "@/ui/primitives/Input";
 import Button from "@/ui/primitives/Button";
 import { useAuth } from "@/state/auth/AuthContext";
 import { useToast } from "@/ui/feedback/Toast";
+import { prefetchCoreAppData } from "@/services/prefetch";
 
 export default function LoginPage() {
   const { signIn, user, configError } = useAuth();
@@ -33,6 +34,7 @@ export default function LoginPage() {
       return;
     }
     toast.push({ title: "Bem-vindo de volta!", tone: "success" });
+    prefetchCoreAppData();
     navigate(from, { replace: true });
   }
 

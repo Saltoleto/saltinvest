@@ -20,6 +20,26 @@ export type FgcExposureRow = {
   total_in_institution: number;
 };
 
+
+type AnalyticsInvestmentRow = {
+  valor_total: number | null;
+  liquidez: string | null;
+  coberto_fgc: boolean | null;
+  status: string | null;
+  instituicoes?: { nome?: string | null } | null;
+};
+
+async function listAnalyticsInvestments(uid: string): Promise<AnalyticsInvestmentRow[]> {
+  return cacheFetch(k(uid, "base-investments"), TTL_MS, async () => {
+    const { data, error } = await supabase
+      .from("investimentos")
+      .select("valor_total, liquidez, coberto_fgc, status, instituicoes(nome)")
+      .eq("user_id", uid);
+    if (error) throw error;
+    return (data ?? []) as any[];
+  });
+}
+
 function monthStartISO(d = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -29,11 +49,7 @@ function monthStartISO(d = new Date()): string {
 export async function getEquitySummary(): Promise<EquitySummary> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, "equity"), TTL_MS, async () => {
-    const { data, error } = await supabase
-      .from("investimentos")
-      .select("valor_total, liquidez, coberto_fgc, status")
-      .eq("user_id", uid);
-    if (error) throw error;
+    const data = await listAnalyticsInvestments(uid);
 
     let total = 0;
     let liquid = 0;
@@ -55,11 +71,7 @@ export async function getEquitySummary(): Promise<EquitySummary> {
 export async function getFgcExposure(): Promise<FgcExposureRow[]> {
   const uid = await requireUserId();
   return cacheFetch(k(uid, "fgc"), TTL_MS, async () => {
-    const { data, error } = await supabase
-      .from("investimentos")
-      .select("valor_total, coberto_fgc, status, instituicoes(nome)")
-      .eq("user_id", uid);
-    if (error) throw error;
+    const data = await listAnalyticsInvestments(uid);
 
     const byInst: Record<string, { covered: number; uncovered: number; total: number }> = {};
 

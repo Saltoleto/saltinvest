@@ -215,6 +215,7 @@ export async function listYearMonthBreakdown(year?: number): Promise<YearMonthBr
     if (e2) throw e2;
 
     const months = monthsOfYear(y);
+    const monthsSet = new Set(months);
 
     const contributedByMonth: Record<string, number> = {};
     const plannedByMonth: Record<string, number> = {};
@@ -225,7 +226,7 @@ export async function listYearMonthBreakdown(year?: number): Promise<YearMonthBr
     for (const s of subs ?? []) {
       const gid = String((s as any).meta_id);
       const mk = monthKey(String((s as any).data_referencia));
-      if (!months.includes(mk)) continue;
+      if (!monthsSet.has(mk)) continue;
 
       const st = String((s as any).status || "");
       const expected = Number((s as any).valor_esperado) || 0;
