@@ -635,24 +635,25 @@ const lastUpdatedLabel = React.useMemo(() => {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <Card className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+      <Card className="p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <div className="text-slate-900 font-semibold">Planejamento anual</div>
-            <div className="text-sm text-slate-600">Selecione o ano aplicado aos cards de análise.</div>
+            <div className="hidden sm:block text-sm text-slate-600">Selecione o ano aplicado aos cards de análise.</div>
           </div>
-          <div className="inline-flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-sm text-slate-600">Ano</span>
+          <div className="inline-flex items-center gap-2 self-start sm:self-auto rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 sm:px-0 sm:py-0 sm:border-0 sm:bg-transparent">
+            <span className="text-xs sm:text-sm text-slate-600">Ano</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="rounded-xl2 border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              className="rounded-lg sm:rounded-xl2 border border-slate-200 bg-white px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-slate-800"
               aria-label="Selecionar ano do dashboard"
             >
               <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
               <option value={new Date().getFullYear() + 1}>{new Date().getFullYear() + 1}</option>
             </select>
           </div>
+          <div className="sm:hidden text-xs text-slate-500">Ano aplicado aos cards de análise.</div>
         </div>
       </Card>
       {/* Patrimônio */}

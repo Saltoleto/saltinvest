@@ -184,10 +184,10 @@ export default function ExposureInvestmentsPage() {
 
   return (
     <div className="grid gap-4 lg:gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-slate-900 font-semibold text-lg">Exposição de investimentos</div>
-          <div className="text-sm text-slate-600">Liquidez, cobertura e concentração da sua carteira.</div>
+      <div className="flex items-start sm:items-center justify-between gap-2 sm:gap-3">
+        <div className="min-w-0">
+          <div className="text-slate-900 font-semibold text-base sm:text-lg leading-tight">Exposição de investimentos</div>
+          <div className="text-xs sm:text-sm text-slate-600 leading-snug mt-0.5">Liquidez, cobertura e concentração da sua carteira.</div>
         </div>
         <span className="hidden sm:inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
           <Icon name="pie" className="h-4 w-4 text-blue-600" />
