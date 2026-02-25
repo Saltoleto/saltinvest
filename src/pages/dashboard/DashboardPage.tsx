@@ -12,7 +12,6 @@ import { getEquitySummary } from "@/services/analytics";
 import { listInvestments } from "@/services/investments";
 import { getMonthlyPlanSummary, listMonthlyPlanGoals } from "@/services/monthly";
 import { listYearGoalProjections } from "@/services/yearly";
-import { prefetchDashboardData, prefetchExposureData, prefetchMonthlyPlanData } from "@/services/prefetch";
 
 function pct(part: number, total: number): number {
   if (!total) return 0;
@@ -609,12 +608,6 @@ export default function DashboardPage() {
   const equity = useAsync(() => getEquitySummary(), []);
   const monthly = useAsync(() => getMonthlyPlanSummary(), []);
   const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
-  React.useEffect(() => {
-    // Fase 2: aquece cache de dados em background para trocar filtros/rotas com menos espera.
-    prefetchDashboardData(selectedYear);
-    prefetchExposureData();
-    prefetchMonthlyPlanData();
-  }, [selectedYear]);
   const yearGoals = useAsync(() => listYearGoalProjections(selectedYear), [selectedYear]);
   const invs = useAsync(() => listInvestments(), []);
 

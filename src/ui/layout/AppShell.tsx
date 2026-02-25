@@ -4,7 +4,6 @@ import Sidebar from "./Sidebar";
 import MobileNav from "./MobileNav";
 import TopBar from "./TopBar";
 import CommandPalette from "./CommandPalette";
-import { prefetchCoreAppData } from "@/services/prefetch";
 
 function isEditable(el: Element | null): boolean {
   if (!el) return false;
@@ -26,14 +25,12 @@ export default function AppShell() {
     const run = () => {
       // Prefetch só quando o usuário já entrou no /app.
       if (!location.pathname.startsWith("/app")) return;
-      // Rotas mais acessadas (code chunks)
+      // Rotas mais acessadas.
       import("@/pages/dashboard/DashboardPage");
       import("@/pages/monthly/MonthlyPlanPage");
       import("@/pages/exposure/ExposureInvestmentsPage");
       import("@/pages/investments/InvestmentsPage");
       import("@/pages/goals/GoalsPage");
-      // Fase 2: também aquece dados mais usados em background (cache services)
-      prefetchCoreAppData();
     };
 
     const w = window as any;

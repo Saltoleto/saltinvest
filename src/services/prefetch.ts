@@ -11,8 +11,29 @@ function bg(task: () => Promise<unknown>) {
   task().catch(() => undefined);
 }
 
+/**
+ * Avoid re-running the same prefetch burst repeatedly in a short interval.
+ * This reduces duplicate requests when multiple effects fire close together
+ * (login redirect, app shell mount, route transitions, filter changes).
+ */
+const lastRun = new Map<string, number>();
+const PREFETCH_COOLDOWN_MS = 8_000;
+
+function shouldRun(key: string, cooldownMs = PREFETCH_COOLDOWN_MS) {
+  const now = Date.now();
+  const prev = lastRun.get(key) ?? 0;
+  if (now - prev < cooldownMs) return false;
+  lastRun.set(key, now);
+  return true;
+}
+
+function runOnce(key: string, task: () => Promise<unknown>, cooldownMs?: number) {
+  if (!shouldRun(key, cooldownMs)) return;
+  bg(task);
+}
+
 export function prefetchCoreAppData() {
-  bg(async () => {
+  runOnce("core", async () => {
     const year = new Date().getFullYear();
     await Promise.allSettled([
       getEquitySummary(),
@@ -28,25 +49,25 @@ export function prefetchCoreAppData() {
 
 export function prefetchDashboardData(year?: number) {
   const y = year ?? new Date().getFullYear();
-  bg(async () => {
+  runOnce(`dashboard:${y}`, async () => {
     await Promise.allSettled([
       getEquitySummary(),
       getMonthlyPlanSummary(),
       listYearGoalProjections(y),
-      listInvestments(),
       listYearMonthBreakdown(y),
+      listInvestments(),
     ]);
-  });
+  }, 4_000);
 }
 
 export function prefetchExposureData() {
-  bg(async () => {
+  runOnce("exposure", async () => {
     await Promise.allSettled([getEquitySummary(), listInvestments(), getFgcExposure()]);
-  });
+  }, 4_000);
 }
 
 export function prefetchMonthlyPlanData() {
-  bg(async () => {
+  runOnce("monthly-plan", async () => {
     await Promise.allSettled([getMonthlyPlanSummary(), listMonthlyPlanGoals()]);
-  });
+  }, 4_000);
 }
