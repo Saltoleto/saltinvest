@@ -308,6 +308,17 @@ export default function GoalsPage() {
   return (
     <div className="grid gap-4 lg:gap-6">
       <Card className="p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-slate-900 font-semibold">Planejamento plurianual</div>
+            <div className="text-sm text-slate-600">Veja o valor total das metas separado por ano, com consolidado de aportes e saldo restante.</div>
+          </div>
+          <Button variant="secondary" onClick={() => navigate("/app/goals/plurianual")}>
+            <Icon name="layers" className="h-4 w-4" /> Ver visão plurianual
+          </Button>
+        </div>
+      </Card>
+      <Card className="p-4">
         <div className="grid grid-cols-[1fr_auto] items-start gap-3">
           <button
             type="button"

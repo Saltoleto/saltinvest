@@ -66,6 +66,14 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         run: (nav) => nav("/app/exposure")
       },
       {
+        id: "nav-plurianual",
+        label: "Planejamento plurianual",
+        icon: "layers",
+        group: "Navegação",
+        keywords: "metas anual anos planejamento plurianual consolidado",
+        run: (nav) => nav("/app/goals/plurianual")
+      },
+      {
         id: "nav-goals",
         label: "Metas",
         icon: "target",

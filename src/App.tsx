@@ -18,6 +18,7 @@ const ExposureInvestmentsPage = React.lazy(() => import("@/pages/exposure/Exposu
 const InvestmentsPage = React.lazy(() => import("@/pages/investments/InvestmentsPage"));
 const GoalsPage = React.lazy(() => import("@/pages/goals/GoalsPage"));
 const GoalsYearPage = React.lazy(() => import("@/pages/goals/GoalsYearPage"));
+const PlurianualPlanningPage = React.lazy(() => import("@/pages/planning/PlurianualPlanningPage"));
 const ClassesPage = React.lazy(() => import("@/pages/classes/ClassesPage"));
 const TargetsPage = React.lazy(() => import("@/pages/targets/TargetsPage"));
 const InstitutionsPage = React.lazy(() => import("@/pages/institutions/InstitutionsPage"));
@@ -109,6 +110,8 @@ export default function App() {
             {/* Rotas premium: visão anual detalhada */}
             <Route path="goals/year" element={<GoalsYearPage />} />
             <Route path="metas/ano" element={<GoalsYearPage />} />
+                        <Route path="goals/plurianual" element={<PlurianualPlanningPage />} />
+            <Route path="metas/plurianual" element={<PlurianualPlanningPage />} />
             <Route path="classes" element={<ClassesPage />} />
             <Route path="targets" element={<TargetsPage />} />
             <Route path="institutions" element={<InstitutionsPage />} />
