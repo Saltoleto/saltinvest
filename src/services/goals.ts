@@ -151,6 +151,31 @@ export async function listGoalsEvolution(): Promise<GoalEvolutionRow[]> {
   });
 }
 
+// Total restante (soma de (valor_esperado - valor_aportado)) considerando apenas submetas em ABERTA.
+// Usado na distribuição de aportes para dar contexto do saldo total por meta.
+export async function getOpenSubgoalsRemainingByGoal(goalIds: string[]): Promise<Record<string, number>> {
+  const uid = await requireUserId();
+  if (!goalIds.length) return {};
+
+  const { data, error } = await supabase
+    .from("submetas")
+    .select("meta_id, valor_esperado, valor_aportado")
+    .eq("user_id", uid)
+    .in("meta_id", goalIds)
+    .eq("status", "ABERTA");
+  if (error) throw error;
+
+  const sums: Record<string, number> = {};
+  for (const r of data ?? []) {
+    const gid = String((r as any).meta_id);
+    const esperado = Number((r as any).valor_esperado) || 0;
+    const aportado = Number((r as any).valor_aportado) || 0;
+    const restante = Math.max(0, esperado - aportado);
+    sums[gid] = (sums[gid] ?? 0) + restante;
+  }
+  return sums;
+}
+
 
 
 export async function getSubmetaValorMetaMesReferencia(goalId: string, referenceDate: string): Promise<number> {

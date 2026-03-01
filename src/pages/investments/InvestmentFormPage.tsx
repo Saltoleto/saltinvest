@@ -9,7 +9,7 @@ import Skeleton from "@/ui/primitives/Skeleton";
 import { useAsync } from "@/state/useAsync";
 import { listClasses } from "@/services/classes";
 import { listInstitutions } from "@/services/institutions";
-import { listGoalsEvolution } from "@/services/goals";
+import { getOpenSubgoalsRemainingByGoal, listGoalsEvolution } from "@/services/goals";
 import { getInvestment, listAllocationsByInvestment, saveInvestmentWithAllocations } from "@/services/investments";
 import { listMonthlyPlanGoals } from "@/services/monthly";
 import { formatBRL, formatPercent, clamp } from "@/lib/format";
@@ -41,6 +41,19 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
   const classes = useAsync(() => listClasses(), []);
   const inst = useAsync(() => listInstitutions(), []);
   const goals = useAsync(() => listGoalsEvolution(), []);
+  const goalIdsKey = React.useMemo(
+    () => (goals.data ?? []).map((g) => g.goal_id).filter(Boolean).join("|"),
+    [goals.data]
+  );
+  const openRemaining = useAsync<Record<string, number>>(
+    () => {
+      const ids = (goals.data ?? []).map((g) => g.goal_id).filter(Boolean);
+      return ids.length
+        ? getOpenSubgoalsRemainingByGoal(ids)
+        : Promise.resolve({} as Record<string, number>);
+    },
+    [goalIdsKey]
+  );
   const monthly = useAsync(() => listMonthlyPlanGoals(), []);
   const existing = useAsync(() => (mode === "edit" && investmentId ? getInvestment(investmentId) : Promise.resolve(null)), [mode, investmentId]);
   const existingAlloc = useAsync(() => (mode === "edit" && investmentId ? listAllocationsByInvestment(investmentId) : Promise.resolve([])), [mode, investmentId]);
@@ -108,9 +121,18 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
 
   React.useEffect(() => {
     if (mode !== "edit") return;
-    const map: Record<string, string> = {};
+    // Allocations are stored per *submeta* in the DB. When editing, we must show
+    // the total allocated per meta (goal), so we aggregate by goal_id.
+    const sumByGoal = new Map<string, number>();
     for (const a of existingAlloc.data ?? []) {
-      map[a.goal_id] = a.amount != null ? formatBRL(Number(a.amount)) : "";
+      const gid = a.goal_id;
+      if (!gid) continue;
+      sumByGoal.set(gid, (sumByGoal.get(gid) ?? 0) + Number(a.amount ?? 0));
+    }
+
+    const map: Record<string, string> = {};
+    for (const [gid, amt] of sumByGoal.entries()) {
+      map[gid] = formatBRL(amt);
     }
     setAlloc(map);
   }, [mode, existingAlloc.data]);
@@ -385,6 +407,12 @@ export const InvestmentForm = React.forwardRef<InvestmentFormHandle, Props>(func
                               {formatBRL(g.suggested)}
                               <span className="text-slate-700/80">• aplicar</span>
                             </button>
+                            <span className="w-full text-[12px] text-slate-500">
+                              Restante total (submetas em aberto):{" "}
+                              <span className="font-medium text-slate-700">
+                                {formatBRL(openRemaining.data?.[g.goal_id] ?? 0)}
+                              </span>
+                            </span>
                           </div>
                         ) : null}
                       </div>
